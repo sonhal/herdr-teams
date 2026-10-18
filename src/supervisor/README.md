@@ -10,10 +10,10 @@ Blocked, missing and unknown agents keep their mail. Working Codex agents receiv
 urgent mail; other kinds use interrupt-then-idle delivery. Blocked recipients
 produce one lead notice per observed blocked episode. Acknowledged urgent messages do not skip older ordinary mail.
 
-Completed turns produce a coalesced lead report keyed by herdr's completion
-sequence. Reports include owned tasks and the last direct message, or recent
-pane output. Idle teammates with no waiting mail or active task claim the first
-unassigned, unblocked task, unless `auto_claim` is false in team config.
+Completed turns produce a coalesced lead report keyed by member incarnation and
+herdr's completion sequence. Reports include owned tasks and a new direct message,
+or recent pane output. Idle teammates without an active task claim assigned work
+first, then unassigned work when no mail is waiting, unless `auto_claim` is false.
 
 Lifecycle reconciliation confirms exits and releases active tasks. Registered
 pane IDs guard against unrelated agents with the same name. No real-agent
@@ -32,6 +32,9 @@ socket, serializes event handling, samples progress on a configurable clock,
 and reconnects with a fresh session snapshot after disconnect or event loss.
 The startup hook reopens missing supervisor panes. `supervisor.mode: off`
 retains hook delivery without time-based advisories.
+Roster changes reconnect the event stream to subscribe to new pane IDs.
+Event hooks check for a connected supervisor before starting Node and skip teams
+already served by one. Disconnected or exited supervisors restore fallback delivery.
 
 Advisories use state changes, member CLI activity and normalized output hashes.
 Each episode has one notice and one recovery. Recent human focus or an
@@ -40,4 +43,5 @@ human. Optional status-check nudges never close or restart agents.
 
 `peek` reads output. `interrupt` and task release send Esc and optionally queue
 context-preserving instructions; blocked agents refuse these actions. Urgent
-Codex delivery uses herdr prompt input; other adapters use interrupt then idle.
+Codex delivery uses herdr prompt input; other adapters save one interrupt attempt
+while urgent mail waits, then wait for idle before delivering it.

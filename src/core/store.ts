@@ -285,6 +285,17 @@ export class Store {
       details.ended = ended;
       details.state = ended;
       details.last_output = output;
+      if (
+        team.layout &&
+        (details.tab_id === team.layout.tab_id ||
+          details.pane_id === team.layout.pane_id)
+      ) {
+        const remaining = Object.values(team.details ?? {}).filter(
+          (m) => !m.ended && m.pane_id && m.tab_id === team.layout!.tab_id,
+        );
+        team.layout.count = remaining.length;
+        team.layout.pane_id = remaining.at(-1)?.pane_id ?? '';
+      }
       changed = true;
     });
     if (!changed) return;
@@ -467,6 +478,12 @@ export class Store {
       }
       this.save(task);
       this.event(`task.${action}`, task);
+      if (action === 'assign')
+        this.send(
+          actor,
+          task.owner!,
+          `Task #${task.id} assigned to you: ${task.subject}\n${task.description}\nClaim it with herdr-teams task claim ${task.id}, or wait for automatic claiming.`,
+        );
       if (action === 'complete')
         for (const dependent of this.tasks().filter((t) =>
           t.blockedBy.includes(id),
@@ -560,6 +577,9 @@ export class Store {
     state.acknowledged ??= {};
     state.idle_hooks ??= {};
     state.steered ??= {};
+    state.incarnations ??= {};
+    state.report_messages ??= {};
+    state.interrupts ??= {};
     for (const key of [
       'cursors',
       'reports',
@@ -567,6 +587,9 @@ export class Store {
       'acknowledged',
       'idle_hooks',
       'steered',
+      'incarnations',
+      'report_messages',
+      'interrupts',
     ] as const) {
       const map = state[key];
       if (map) Object.setPrototypeOf(map, null);
@@ -576,7 +599,7 @@ export class Store {
   saveDeliveryState(state: DeliveryState): void {
     atomic(join(this.root, 'delivery.json'), state);
   }
-  autoClaim(actor: string): Task | undefined {
+  autoClaim(actor: string, assignedOnly = false): Task | undefined {
     return this.lock(() => {
       if (
         this.tasks().some(
@@ -586,12 +609,13 @@ export class Store {
         )
       )
         return;
-      const task = this.tasks().find(
+      const available = this.tasks().filter(
         (t) =>
           t.status === 'pending' &&
-          t.owner === null &&
+          (t.owner === actor || (!assignedOnly && t.owner === null)) &&
           t.blockedBy.every((id) => this.task(id).status === 'completed'),
       );
+      const task = available.find((t) => t.owner === actor) ?? available[0];
       if (!task) return;
       task.owner = actor;
       task.status = 'in_progress';
@@ -614,6 +638,9 @@ export class Store {
 }
 
 export interface DeliveryState {
+  incarnations?: Record<string, string>;
+  report_messages?: Record<string, string>;
+  interrupts?: Record<string, boolean>;
   blocked?: Record<string, boolean>;
   acknowledged?: Record<string, string[]>;
   idle_hooks?: Record<string, number>;

@@ -116,16 +116,6 @@ export async function checkAdvisories(
         );
         notified = true;
       }
-      if (!quiet && next === 'needs-input')
-        await client.command([
-          'notification',
-          'show',
-          `${name} needs input`,
-          '--body',
-          'Answer the permission or question prompt in its pane.',
-          '--sound',
-          'request',
-        ]);
     } else if (
       next &&
       nudged &&
@@ -150,5 +140,23 @@ export async function checkAdvisories(
       advisory_notified: notified,
       nudged,
     });
+    if (fresh && !quiet && next === 'needs-input') {
+      try {
+        await client.command([
+          'notification',
+          'show',
+          `${name} needs input`,
+          '--body',
+          'Answer the permission or question prompt in its pane.',
+          '--sound',
+          'request',
+        ]);
+      } catch (error) {
+        db.event('advisory.notification_failed', {
+          member: name,
+          error: String(error),
+        });
+      }
+    }
   }
 }

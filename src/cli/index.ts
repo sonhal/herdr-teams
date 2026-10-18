@@ -6,7 +6,10 @@ import { installTemplateCommands } from './templates.js';
 import { installPlanCommands } from './plans.js';
 import { installWorktreeCommands } from './worktrees.js';
 import { installSupervisionCommands } from './supervision.js';
-import { ensureSupervisor } from '../supervisor/runtime.js';
+import {
+  ensureSupervisor,
+  supervisorConnected,
+} from '../supervisor/runtime.js';
 import { applyEvent } from '../supervisor/events.js';
 import { installLifecycleCommands } from './lifecycle.js';
 import { installCoreCommands } from './core.js';
@@ -143,8 +146,34 @@ export async function runCliAsync(
         team.herdr_socket !== env.HERDR_SOCKET_PATH
       )
         continue;
-      if (hook && env.HERDR_PLUGIN_EVENT_JSON)
-        applyEvent(db, JSON.parse(env.HERDR_PLUGIN_EVENT_JSON) as unknown);
+      if (hook === 'event') {
+        if (supervisorConnected(db)) continue;
+        const event = env.HERDR_PLUGIN_EVENT_JSON
+          ? (JSON.parse(env.HERDR_PLUGIN_EVENT_JSON) as {
+              data?: {
+                pane_id?: string;
+                previous_pane_id?: string;
+                pane?: { pane_id?: string };
+              };
+            })
+          : undefined;
+        const targets = [
+          event?.data?.pane_id,
+          event?.data?.previous_pane_id,
+          event?.data?.pane?.pane_id,
+        ].filter(Boolean);
+        if (
+          !targets.some(
+            (pane) =>
+              pane === team.lead_pane_id ||
+              Object.values(team.details ?? {}).some(
+                (m) => !m.ended && m.pane_id === pane,
+              ),
+          )
+        )
+          continue;
+        applyEvent(db, event);
+      }
       const caller = identity.agent && team.details?.[identity.agent];
       if (caller && caller.pane_id === identity.paneId)
         db.patchMember(identity.agent!, { last_activity: Date.now() });

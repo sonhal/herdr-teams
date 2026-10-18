@@ -111,6 +111,23 @@ export async function reconcile(
       const agent = liveMember(team, member, agents);
       if (agent) members.set(member, agent);
     }
+    state.incarnations ??= {};
+    state.interrupts ??= {};
+    state.report_messages ??= {};
+    for (const [member, agent] of members) {
+      const incarnation = JSON.stringify([
+        agent.pane_id,
+        team.details?.[member]?.started_at,
+        agent.agent_session,
+      ]);
+      if (state.incarnations[member] !== incarnation) {
+        state.incarnations[member] = incarnation;
+        delete state.reports[member];
+        if (state.idle_hooks) delete state.idle_hooks[member];
+        if (state.blocked) delete state.blocked[member];
+        delete state.interrupts[member];
+      }
+    }
     state.blocked ??= {};
     for (const [member, agent] of members) {
       if (agent.agent_status !== 'blocked') {
@@ -156,10 +173,18 @@ export async function reconcile(
       const tasks = db.tasks().filter((t) => t.owner === member);
       const last = db
         .inbox(team.lead)
-        .filter((m) => m.from === member && !m.kind)
+        .filter(
+          (m) =>
+            m.from === member &&
+            !m.kind &&
+            Date.parse(m.createdAt) >=
+              (team.details?.[member]?.started_at ?? 0),
+        )
         .at(-1);
       const output =
-        last?.body ??
+        (last && last.id !== state.report_messages![member]
+          ? last.body
+          : undefined) ??
         (await client.paneRead(agent.pane_id, {
           source: 'recent-unwrapped',
           lines: 20,
@@ -174,6 +199,7 @@ export async function reconcile(
         'report',
       );
       state.reports[member] = seq;
+      if (last) state.report_messages![member] = last.id;
       db.saveDeliveryState(state);
     }).catch((error: unknown) => failures.push(error));
     await each(members, async (member, agent) => {
@@ -192,17 +218,20 @@ export async function reconcile(
       const steers = team.details?.[member]?.kind !== 'codex';
       if (agent.agent_status === 'working') {
         pending = pending.filter((m) => m.urgent);
-        // Esc was already pressed for the newest urgent message.
-        if (steers && pending.at(-1)?.id === state.steered![member]) return;
+        if (
+          steers &&
+          (state.interrupts![member] ||
+            pending.some((m) => m.id === state.steered![member]))
+        )
+          return;
       }
       if (
-        !pending.length &&
         agent.agent_status !== 'working' &&
         member !== team.lead &&
         team.auto_claim !== false &&
         team.details?.[member]?.auto_claim !== false
       ) {
-        const task = db.autoClaim(member);
+        const task = db.autoClaim(member, pending.length > 0);
         if (task) {
           if (task.worktree?.required && !task.worktree.binding) {
             try {
@@ -213,6 +242,7 @@ export async function reconcile(
             }
           }
           pending = [
+            ...pending,
             db.send(
               team.lead,
               member,
@@ -236,6 +266,12 @@ export async function reconcile(
         if (!pending.length) return;
         if (steers) {
           // Saved first so a retried reconcile doesn't press Esc again.
+          if (
+            state.interrupts![member] ||
+            pending.some((m) => m.id === state.steered![member])
+          )
+            return;
+          state.interrupts![member] = true;
           state.steered![member] = pending.at(-1)!.id;
           db.saveDeliveryState(state);
           await client.sendKeys(agent.pane_id, 'esc');
@@ -248,6 +284,8 @@ export async function reconcile(
         agent.pane_id,
         pending.map((m) => wrap(team.name, m)).join('\n\n'),
       );
+      delete state.interrupts![member];
+      delete state.steered![member];
       for (const message of pending) acknowledged.add(message.id);
       for (const message of db.inbox(member).slice(index + 1)) {
         if (!acknowledged.has(message.id)) break;

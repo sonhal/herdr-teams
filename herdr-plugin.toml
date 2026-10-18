@@ -14,23 +14,23 @@ command = ["node", "dist/bin/herdr-teams.js", "_hook", "startup"]
 
 [[events]]                           # fallback path when no supervisor runs
 on = "pane.agent_status_changed"
-command = ["node", "dist/bin/herdr-teams.js", "_hook", "event"]
+command = ["sh", "bin/herdr-teams-event"]
 [[events]]
 on = "pane.exited"
-command = ["node", "dist/bin/herdr-teams.js", "_hook", "event"]
+command = ["sh", "bin/herdr-teams-event"]
 [[events]]
 on = "pane.closed"
-command = ["node", "dist/bin/herdr-teams.js", "_hook", "event"]
+command = ["sh", "bin/herdr-teams-event"]
 [[events]]
 on = "pane.moved"
-command = ["node", "dist/bin/herdr-teams.js", "_hook", "event"]
+command = ["sh", "bin/herdr-teams-event"]
 
 [[events]]
 on = "pane.focused"
-command = ["node", "dist/bin/herdr-teams.js", "_hook", "event"]
+command = ["sh", "bin/herdr-teams-event"]
 [[events]]
 on = "pane.agent_detected"
-command = ["node", "dist/bin/herdr-teams.js", "_hook", "event"]
+command = ["sh", "bin/herdr-teams-event"]
 
 [[actions]]
 id = "start-team"

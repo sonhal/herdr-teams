@@ -152,10 +152,17 @@ export function installLifecycleCommands(
     const members = Object.entries(db.config().details ?? {})
       .filter(([, m]) => !m.ended)
       .map(([name]) => name);
+    const errors: unknown[] = [];
     for (const member of members) {
-      if (force) await lifecycle.kill(member);
-      else lifecycle.requestShutdown(member);
+      try {
+        if (force) await lifecycle.kill(member);
+        else lifecycle.requestShutdown(member);
+      } catch (error) {
+        errors.push(new Error(`${member}: ${String(error)}`));
+      }
     }
+    if (errors.length)
+      throw new AggregateError(errors, errors.map(String).join('; '));
     print({
       members,
       state: force ? 'killed' : 'shutdown-requested',
