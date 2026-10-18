@@ -69,7 +69,7 @@ export class Lifecycle {
         'lead',
       interactive: options.interactive ?? team.defaults?.interactive ?? false,
     };
-    const agentName = newAgentName(team.name, member);
+    const agentName = newAgentName(team.name, member, team.id);
     const kind =
       options.kind ?? team.defaults?.kind ?? (await this.currentKind());
     const model = options.model ?? team.defaults?.model;

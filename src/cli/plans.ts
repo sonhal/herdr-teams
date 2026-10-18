@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { readFileSync } from 'node:fs';
 import { Store } from '../core/store.js';
 import { Plans } from '../core/plans.js';
-import { readIdentity } from './identity.js';
+import { readSelectedIdentity } from './identity.js';
 export function installPlanCommands(
   program: Command,
   env: NodeJS.ProcessEnv,
@@ -12,7 +12,7 @@ export function installPlanCommands(
   (group.commands as Command[]).splice(0);
   group.description('Submit and review task plans');
   const context = (command: Command, privileged = false) => {
-    const identity = readIdentity(
+    const identity = readSelectedIdentity(
       env,
       command.optsWithGlobals<{ team?: string }>().team,
     );

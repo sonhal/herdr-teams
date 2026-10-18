@@ -16,7 +16,7 @@ import { installCoreCommands } from './core.js';
 import { Store } from '../core/store.js';
 import { HerdrClient } from '../herdr/index.js';
 import { reconcile } from '../supervisor/delivery.js';
-import { readIdentity } from './identity.js';
+import { readIdentity, readSelectedIdentity } from './identity.js';
 
 export interface CliOptions {
   version: string;
@@ -94,7 +94,7 @@ function targetTeam(program: Command, env: NodeJS.ProcessEnv) {
     if (stored) return stored;
     return start.opts<{ name?: string }>().name ?? flags.team ?? start.args[0];
   }
-  return readIdentity(env, flags.team).teamId;
+  return readSelectedIdentity(env, flags.team).teamId;
 }
 
 /** Production entrypoint: keep command errors distinct from deferred delivery. */

@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { Store, clip } from '../core/store.js';
 import { HerdrClient } from '../herdr/index.js';
 import { supervise, ensureSupervisor } from '../supervisor/runtime.js';
-import { readIdentity } from './identity.js';
+import { readSelectedIdentity } from './identity.js';
 
 export function installSupervisionCommands(
   program: Command,
@@ -19,7 +19,7 @@ export function installSupervisionCommands(
     return program.command(usage);
   }
   function context(cmd: Command, privileged = false) {
-    const identity = readIdentity(
+    const identity = readSelectedIdentity(
       env,
       cmd.optsWithGlobals<{ team?: string }>().team,
     );

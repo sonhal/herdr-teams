@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { Store } from '../core/store.js';
 import { Worktrees, git, worktreeStatus } from '../core/worktrees.js';
 import { HerdrClient } from '../herdr/index.js';
-import { readIdentity } from './identity.js';
+import { readSelectedIdentity } from './identity.js';
 export function installWorktreeCommands(
   program: Command,
   env: NodeJS.ProcessEnv,
@@ -12,7 +12,7 @@ export function installWorktreeCommands(
   (group.commands as Command[]).splice(0);
   group.description('Create, integrate and clean up worktrees');
   function context(cmd: Command, privileged = true) {
-    const identity = readIdentity(
+    const identity = readSelectedIdentity(
       env,
       cmd.optsWithGlobals<{ team?: string }>().team,
     );
