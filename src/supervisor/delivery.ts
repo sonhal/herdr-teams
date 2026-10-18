@@ -18,6 +18,10 @@ const MAX_PROMPT_BYTES = 96 * 1024;
 
 function wrap(team: string, message: Message): string {
   // clip() covers mail written before Store.send enforced the limit.
+  // Advisories come from herdr-teams, often about a teammate that has ended,
+  // so a reply hint would point at no one.
+  if (message.kind === 'advisory')
+    return `[herdr-teams] notice about ${message.from} — team "${team}":\n${clip(message.body)}\nInspect: herdr-teams status · Tasks: herdr-teams task list`;
   return `[herdr-teams] message from ${message.from} (teammate, not the user) — team "${team}":\n${clip(message.body)}\nReply: herdr-teams msg send ${message.from} "…" · Tasks: herdr-teams task list`;
 }
 
