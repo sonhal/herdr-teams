@@ -77,12 +77,11 @@ or in an ignored directory.
 ## Teammates
 
 herdr does not put plugin commands on PATH, so link the CLI for the lead once
-by running the shim from the plugin root (`herdr plugin list --json` shows
-`plugin_root`; for a linked checkout it is the checkout). Inside a herdr
+(see [Installation and support](#installation-and-support)). Inside a herdr
 session, create a team from the lead pane, then spawn members:
 
 ```sh
-<plugin-root>/bin/herdr-teams install-shim --directory ~/.local/bin
+herdr plugin action invoke herdr-teams.install-shim
 herdr-teams team create demo
 herdr-teams --team demo spawn alice --kind codex --thinking high --prompt "Review the implementation"
 herdr-teams --team demo shutdown alice
@@ -257,8 +256,10 @@ Long-running terminal commands are available through the CLI only.
 Once the feature PRs are merged, install with
 `herdr plugin install sonhal/herdr-teams`. The manifest runs `npm ci` and builds
 TypeScript. Development checkouts use `herdr plugin link .` after building.
-`herdr-teams install-shim --directory <directory-on-PATH>` exposes the command
-to the lead. Existing files are never overwritten by the shim installer.
+`herdr plugin action invoke herdr-teams.install-shim` links the command into
+`~/.local/bin` for the lead and reports the result as a herdr notification;
+`herdr-teams install-shim --directory <directory-on-PATH>` picks another
+directory. Existing files are never overwritten by the shim installer.
 
 Linux and macOS are the supported runtime platforms. Windows CI checks build
 and CLI help only; Windows panes, signals and Unix sockets are not supported.

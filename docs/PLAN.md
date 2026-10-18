@@ -756,8 +756,8 @@ command = ["node", "dist/bin/herdr-teams.js", "supervise"]
 ```
 
 Spawned panes get `$HERDR_PLUGIN_ROOT/bin` prepended to `PATH`, so every
-teammate can run `herdr-teams`. `herdr-teams install-shim` puts it on the
-lead's `PATH`.
+teammate can run `herdr-teams`. herdr puts nothing on the lead's `PATH`; the
+`install-shim` action links the CLI into `~/.local/bin`.
 
 ## 17. Milestones and testing
 

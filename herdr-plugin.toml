@@ -38,6 +38,12 @@ title = "Start team from template"
 contexts = ["workspace"]
 command = ["node", "dist/bin/herdr-teams.js", "_action", "start-team"]
 
+[[actions]]                          # puts herdr-teams on PATH for the lead
+id = "install-shim"
+title = "Install the herdr-teams command"
+contexts = ["global"]
+command = ["node", "dist/bin/herdr-teams.js", "_action", "install-shim"]
+
 [[actions]]
 id = "open-board"
 title = "Open team board"
