@@ -30,6 +30,7 @@ export function installCoreCommands(
       warn(
         `warning: herdr's startup and event hooks read ${hooks}, not ${stateHome}; event hooks will not find this team\n`,
       );
+    Store.checkLeadPane(stateHome, env.HERDR_SOCKET_PATH, env.HERDR_PANE_ID);
     const db = new Store(stateHome, randomUUID());
     db.create(
       create.opts<{ lead?: string }>().lead ??

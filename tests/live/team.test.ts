@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runCliAsync } from '../../src/cli/index.js';
 import { HERDR_VERSION, startLiveHerdr, type LiveHerdr } from './harness.js';
@@ -89,6 +90,33 @@ describe(`team lifecycle on herdr ${HERDR_VERSION}`, () => {
     expect(again.exitCode).not.toBe(0);
     expect(again.stderr).toContain('Member already exists');
     expect((await herdr.client.agentList()).agents.length).toBe(before);
+  });
+
+  it('labels the lead pane with the lead’s name while a teammate runs', async () => {
+    const hook = await cli(['_hook', 'event'], {
+      HERDR_PLUGIN_EVENT_JSON: JSON.stringify({
+        event: 'pane_agent_status_changed',
+        data: { pane_id: bobPane },
+      }),
+    });
+    expect(hook.stderr).toBe('');
+    // herdr v0.9.5 `pane get` returns reported metadata as display_agent.
+    const lead = JSON.parse(
+      execFileSync(herdr.env.HERDR_BIN_PATH!, ['pane', 'get', leadPane], {
+        env: herdr.env,
+        encoding: 'utf8',
+      }),
+    ).result.pane;
+    expect(lead).toMatchObject({
+      display_agent: 'lead',
+      tokens: { team: 'demo' },
+    });
+  });
+
+  it('refuses a second team from a lead pane whose team is active', async () => {
+    const second = await cli(['team', 'create', 'other']);
+    expect(second.exitCode).not.toBe(0);
+    expect(second.stderr).toContain(`already leads team demo (${teamId})`);
   });
 
   it('kills a member and closes its pane', async () => {

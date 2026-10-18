@@ -20,6 +20,25 @@ export async function syncSidebar(db: Store, client: HerdrClient) {
     const team = db.config();
     const cache: Record<string, string> = {};
     const token = (s: string) => plain(s).slice(0, 80);
+    // Only an active team labels its lead pane: an idle team may have handed
+    // the pane to a newer team (Store.checkLeadPane).
+    const active = Object.values(team.details ?? {}).some((m) => !m.ended);
+    if (team.lead_pane_id && active) {
+      const argv = [
+        'pane',
+        'report-metadata',
+        team.lead_pane_id,
+        '--source',
+        'herdr-teams',
+        '--display-agent',
+        token(team.lead),
+        '--token',
+        `team=${token(team.name)}`,
+      ];
+      cache[team.lead_pane_id] = JSON.stringify(argv);
+      if (previous[team.lead_pane_id] !== cache[team.lead_pane_id])
+        await client.quiet(argv);
+    }
     for (const member of data.members) {
       const details = team.details?.[member.name];
       if (!details?.pane_id || details.ended) continue;

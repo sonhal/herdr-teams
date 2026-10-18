@@ -287,6 +287,11 @@ export class Config {
     )
       defaults.kind = await lifecycle.currentKind();
     if (defaults.kind !== undefined) adapter(defaults.kind);
+    Store.checkLeadPane(
+      db.home,
+      this.env.HERDR_SOCKET_PATH,
+      this.env.HERDR_PANE_ID,
+    );
     db.create(lead, displayName);
     db.bindSession(this.env.HERDR_SOCKET_PATH);
     db.updateTeam((team) => {

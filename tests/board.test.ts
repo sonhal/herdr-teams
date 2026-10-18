@@ -117,3 +117,46 @@ it('updates sidebar labels only when their content changes', async () => {
     await fake.cleanup();
   }
 });
+it('labels the lead pane with the lead’s name while teammates run', async () => {
+  const db = setup();
+  db.updateTeam((t) => {
+    t.lead_pane_id = 'w1:p1';
+  });
+  // herdr v0.9.5: pane and workspace report-metadata print nothing on success.
+  const fake = await fakeHerdr([
+    { stdout: '' },
+    { stdout: '' },
+    { stdout: '' },
+  ]);
+  try {
+    await syncSidebar(db, new HerdrClient({ env: fake.env }));
+    expect((await fake.calls())[0]).toEqual([
+      'pane',
+      'report-metadata',
+      'w1:p1',
+      '--source',
+      'herdr-teams',
+      '--display-agent',
+      'lead',
+      '--token',
+      'team=demo',
+    ]);
+  } finally {
+    await fake.cleanup();
+  }
+});
+it('leaves the lead pane label alone once no teammate runs', async () => {
+  const db = setup();
+  db.updateTeam((t) => {
+    t.lead_pane_id = 'w1:p1';
+  });
+  db.patchMember('alice', { ended: 'shut-down' });
+  const fake = await fakeHerdr([{ stdout: '' }]);
+  try {
+    await syncSidebar(db, new HerdrClient({ env: fake.env }));
+    const calls = await fake.calls();
+    expect(calls.some((call) => call.includes('w1:p1'))).toBe(false);
+  } finally {
+    await fake.cleanup();
+  }
+});

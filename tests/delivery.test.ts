@@ -637,6 +637,7 @@ it('event hooks wake the lead with one completion report across repeated events'
     jsonReply({ type: 'agent_info', agent: lead }),
     jsonReply({ type: 'agent_prompted', agent: lead }),
     { stdout: '' },
+    { stdout: '' },
     agents,
   ]);
   try {
