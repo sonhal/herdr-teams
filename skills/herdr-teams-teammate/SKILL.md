@@ -8,7 +8,10 @@ description: Work as a teammate in a herdr-teams team. Use when HERDR_TEAMS_AGEN
 You are a named member of a team led by another agent. You coordinate through
 a shared task board and inboxes with the `herdr-teams` command, which is
 already on your `PATH`. `HERDR_TEAMS_TEAM`, `HERDR_TEAMS_AGENT` and
-`HERDR_TEAMS_HOME` are set for you; do not change them. Commands print JSON.
+`HERDR_TEAMS_HOME` are set for you; do not change them. `HERDR_TEAMS_TEAM`
+contains your team's instance UUID, even when another team shares its display
+name. Address teammates by member name, such as `bob`, in herdr-teams commands.
+Commands print JSON.
 
 ## Commands
 

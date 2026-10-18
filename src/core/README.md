@@ -1,8 +1,9 @@
 # Core state
 
 `Store` persists teams, tasks, dependencies, inboxes and events under
-`$HERDR_TEAMS_HOME/teams/<team>` (falling back to `$HERDR_PLUGIN_STATE_DIR`
-in the CLI). Task records and configuration use temporary-file-and-rename
+`$HERDR_TEAMS_HOME/teams/<instance-id>` (falling back to `$HERDR_PLUGIN_STATE_DIR`
+in the CLI). Each team config stores its UUID `id` and display `name`; display
+names may repeat. Task records and configuration use temporary-file-and-rename
 writes. A team-wide mkdir lock serializes task and membership mutations,
 including dependency cycle checks and claims. Locks older than a minute are
 recovered only when their owner process is gone. Contenders time out after
