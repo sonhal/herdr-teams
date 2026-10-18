@@ -16,9 +16,9 @@ export function installWorktreeCommands(
       env,
       cmd.optsWithGlobals<{ team?: string }>().team,
     );
-    if (!identity.home || !identity.team)
+    if (!identity.home || !identity.teamId)
       throw new Error('Set HERDR_TEAMS_HOME and select a team');
-    const db = new Store(identity.home, identity.team);
+    const db = new Store(identity.home, identity.teamId);
     return {
       db,
       actor: db.authorize(identity.agent, privileged),

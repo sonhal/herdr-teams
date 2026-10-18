@@ -113,7 +113,7 @@ export class Lifecycle {
     try {
       const env = {
         HERDR_TEAMS_HOME: this.db.home,
-        HERDR_TEAMS_TEAM: this.db.team,
+        HERDR_TEAMS_TEAM: this.db.id,
         HERDR_TEAMS_AGENT: member,
         PATH: `${join(pluginRoot(this.env), 'bin')}:${this.env.PATH ?? ''}`,
       };

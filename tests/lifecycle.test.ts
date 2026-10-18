@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { LAUNCHER, installShim } from '../src/core/shim.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runCliAsync } from '../src/cli/index.js';
 import { Lifecycle } from '../src/core/lifecycle.js';
@@ -25,8 +26,8 @@ afterEach(() =>
 function setup() {
   const home = mkdtempSync(join(tmpdir(), 'lifecycle-'));
   homes.push(home);
-  const db = new Store(home, 'demo');
-  db.create('lead');
+  const db = new Store(home, randomUUID());
+  db.create('lead', 'demo');
   return db;
 }
 const location = jsonReply({ type: 'tab_created', root_pane: pane });
@@ -485,8 +486,8 @@ describe('herdr agent names', () => {
   it('rejects a team and member name too long for herdr before opening a pane', async () => {
     const home = mkdtempSync(join(tmpdir(), 'lifecycle-'));
     homes.push(home);
-    const db = new Store(home, 'a'.repeat(20));
-    db.create('lead');
+    const db = new Store(home, randomUUID());
+    db.create('lead', 'a'.repeat(20));
     const fake = await fakeHerdr([]);
     try {
       await expect(

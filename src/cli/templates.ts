@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { randomUUID } from 'node:crypto';
 import { Config } from '../core/config.js';
 import { Lifecycle } from '../core/lifecycle.js';
 import { Store } from '../core/store.js';
@@ -33,17 +34,17 @@ export function installTemplateCommands(
     }>();
     const identity = readIdentity(env, flags.team);
     if (!identity.home) throw new Error('Set HERDR_TEAMS_HOME');
-    const db = new Store(identity.home, flags.name ?? flags.team ?? template);
+    const db = new Store(identity.home, randomUUID());
     const config = new Config(process.cwd(), env);
-    print(
-      await config.start(
-        db,
-        new Lifecycle(db, new HerdrClient({ env }), env),
-        template,
-        flags.lead ?? identity.agent ?? 'lead',
-        flags.kind,
-      ),
+    const team = await config.start(
+      db,
+      new Lifecycle(db, new HerdrClient({ env }), env),
+      template,
+      flags.lead ?? identity.agent ?? 'lead',
+      flags.kind,
     );
+    (start as Command & { _storeId?: string })._storeId = db.id;
+    print(team);
   });
   const list = replace('templates', 'templates').description(
     'List team templates: project, global, then built-in',
@@ -59,8 +60,8 @@ export function installTemplateCommands(
       env,
       save.optsWithGlobals<{ team?: string }>().team,
     );
-    if (!identity.home || !identity.team) throw new Error('Select a team');
-    const db = new Store(identity.home, identity.team);
+    if (!identity.home || !identity.teamId) throw new Error('Select a team');
+    const db = new Store(identity.home, identity.teamId);
     db.authorize(identity.agent, true);
     print(
       new Config(db.config().repository_dir ?? process.cwd(), env).save(

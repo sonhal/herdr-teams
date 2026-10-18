@@ -7,6 +7,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Store } from '../src/core/store.js';
@@ -15,8 +16,8 @@ const homes: string[] = [];
 function fixture() {
   const home = mkdtempSync(join(tmpdir(), 'teams-'));
   homes.push(home);
-  const db = new Store(home, 'demo');
-  db.create('lead');
+  const db = new Store(home, randomUUID());
+  db.create('lead', 'demo');
   return { home, db };
 }
 afterEach(() => {
@@ -33,18 +34,20 @@ describe('M1 store', () => {
     expect(() => db.change(b.id, 'claim', 'lead')).toThrow('dependencies');
     db.change(a.id, 'claim', 'lead');
     db.change(a.id, 'complete', 'lead', 'finished');
-    expect(new Store(home, 'demo').task(a.id).result).toBe('finished');
+    expect(new Store(home, db.id).task(a.id).result).toBe('finished');
     expect(db.change(b.id, 'claim', 'lead').status).toBe('in_progress');
     expect(() => db.change(b.id, 'claim', 'lead')).toThrow('claimed');
   });
   it('validates names, membership, and ownership', () => {
     const { home, db } = fixture();
-    expect(() => new Store(home, '../escape')).toThrow('Invalid name');
+    expect(() =>
+      new Store(home, randomUUID()).create('lead', '../escape'),
+    ).toThrow('Invalid name');
     expect(() => db.authorize('stranger')).toThrow('Unknown');
     const task = db.add('test');
     expect(() => db.change(task.id, 'complete', 'lead')).toThrow('owner');
     expect(() => db.send('lead', 'stranger', 'hello')).toThrow('recipient');
-    expect(() => db.create('lead')).toThrow();
+    expect(() => db.create('lead', 'demo')).toThrow();
   });
   it('stores messages and records events without advancing delivery', () => {
     const { db } = fixture();
@@ -55,12 +58,12 @@ describe('M1 store', () => {
     );
   });
   it('wires real CLI commands and reports actionable errors', async () => {
-    const { home } = fixture();
+    const { home, db } = fixture();
     let stdout = '';
     let stderr = '';
     const options = {
       version: 'test',
-      env: { HERDR_TEAMS_HOME: home, HERDR_TEAMS_TEAM: 'demo' },
+      env: { HERDR_TEAMS_HOME: home, HERDR_TEAMS_TEAM: db.id },
       stdout: (text: string) => {
         stdout += text;
       },
@@ -114,7 +117,7 @@ describe('M1 store', () => {
               [
                 'dist/bin/herdr-teams.js',
                 '--team',
-                'demo',
+                db.id,
                 'task',
                 'claim',
                 task.id,
@@ -142,8 +145,8 @@ describe('M1 store', () => {
 it('refuses to bind a team to a second herdr session', () => {
   const home = mkdtempSync(join(tmpdir(), 'store-'));
   try {
-    const db = new Store(home, 'demo');
-    db.create('lead');
+    const db = new Store(home, randomUUID());
+    db.create('lead', 'demo');
     db.bindSession('session-a.sock');
     db.bindSession('session-a.sock');
     expect(() => db.bindSession('session-b.sock')).toThrow(
@@ -153,4 +156,38 @@ it('refuses to bind a team to a second herdr session', () => {
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
+});
+
+it('creates a team under an id-keyed dir with id and name in config', () => {
+  const { home } = fixture();
+  const id = randomUUID();
+  const db = new Store(home, id);
+  const team = db.create('lead', 'demo');
+  expect(team.id).toBe(id);
+  expect(team.name).toBe('demo');
+  expect(db.root).toBe(join(home, 'teams', id));
+  expect(new Store(home, id).config().name).toBe('demo');
+});
+
+it('allows two same-name teams under different ids', () => {
+  const home = mkdtempSync(join(tmpdir(), 'teams-'));
+  homes.push(home);
+  const a = new Store(home, randomUUID());
+  a.create('lead', 'dev');
+  const b = new Store(home, randomUUID());
+  b.create('lead', 'dev');
+  expect(a.config().name).toBe('dev');
+  expect(b.config().name).toBe('dev');
+  expect(a.root).not.toBe(b.root);
+  expect(Store.teams(home).map((t) => t.name)).toEqual(['dev', 'dev']);
+});
+
+it('rejects an invalid display name but accepts any uuid id', () => {
+  const { home } = fixture();
+  expect(() =>
+    new Store(home, randomUUID()).create('lead', '../escape'),
+  ).toThrow('Invalid name');
+  expect(() =>
+    new Store(home, randomUUID()).create('lead', 'dev'),
+  ).not.toThrow();
 });

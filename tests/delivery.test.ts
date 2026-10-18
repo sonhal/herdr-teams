@@ -1,6 +1,7 @@
 import { appendFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it } from 'vitest';
 import { runCliAsync } from '../src/cli/index.js';
 import { MAX_MESSAGE_BYTES, Store } from '../src/core/store.js';
@@ -19,8 +20,8 @@ afterEach(() =>
 function setup() {
   const home = mkdtempSync(join(tmpdir(), 'delivery-'));
   homes.push(home);
-  const db = new Store(home, 'demo');
-  db.create('lead');
+  const db = new Store(home, randomUUID());
+  db.create('lead', 'demo');
   db.updateTeam((team) => {
     team.supervisor = { mode: 'off' };
   });
@@ -229,8 +230,8 @@ it('does not prompt a replacement agent that took over the pane', async () => {
 });
 
 function team(home: string, name: string, socket: string) {
-  const db = new Store(home, name);
-  db.create('lead');
+  const db = new Store(home, randomUUID());
+  db.create('lead', name);
   db.updateTeam((config) => {
     config.supervisor = { mode: 'off' };
     config.herdr_socket = socket;
@@ -254,7 +255,7 @@ it('reconciles only the selected team after a command', async () => {
   const fake = await fakeHerdr([list('working')]);
   try {
     expect(
-      await runCliAsync(['--team', 'demo', 'task', 'list'], {
+      await runCliAsync(['--team', alpha.id, 'task', 'list'], {
         version: '0.1.0',
         env: {
           ...fake.env,
@@ -447,6 +448,7 @@ it('creates a team from an ordinary herdr pane in the hooks’ state home', asyn
     }),
   ]);
   try {
+    let stdout = '';
     let stderr = '';
     const env = {
       HERDR_BIN_PATH: fake.binary,
@@ -459,14 +461,17 @@ it('creates a team from an ordinary herdr pane in the hooks’ state home', asyn
       await runCliAsync(['team', 'create', 'demo'], {
         version: '0.1.0',
         env,
-        stdout: () => {},
+        stdout: (s) => {
+          stdout += s;
+        },
         stderr: (s) => {
           stderr += s;
         },
       }),
     ).toBe(0);
     expect(stderr).toBe('');
-    expect(new Store(state, 'demo').config()).toMatchObject({
+    const id = JSON.parse(stdout).id as string;
+    expect(new Store(state, id).config()).toMatchObject({
       herdr_socket: 'session-a.sock',
       lead_pane_id: 'w1:p1',
       supervisor: { mode: 'tab', pane_id: 'w1:p5' },
@@ -482,6 +487,7 @@ it('creates a team from an ordinary herdr pane in the hooks’ state home', asyn
 it('warns when a team is created outside the hooks’ state home', async () => {
   const home = mkdtempSync(join(tmpdir(), 'delivery-'));
   homes.push(home);
+  let stdout = '';
   let stderr = '';
   await runCliAsync(['team', 'create', 'demo'], {
     version: '0.1.0',
@@ -491,13 +497,16 @@ it('warns when a team is created outside the hooks’ state home', async () => {
       HOME: home,
       HERDR_TEAMS_HOME: join(home, 'elsewhere'),
     },
-    stdout: () => {},
+    stdout: (s) => {
+      stdout += s;
+    },
     stderr: (s) => {
       stderr += s;
     },
   });
   expect(stderr).toContain('startup and event hooks read');
-  expect(new Store(join(home, 'elsewhere'), 'demo').config().name).toBe('demo');
+  const id = JSON.parse(stdout).id as string;
+  expect(new Store(join(home, 'elsewhere'), id).config().name).toBe('demo');
 });
 
 it('clips large hook output instead of failing after the hook ran', () => {

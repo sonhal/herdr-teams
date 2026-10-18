@@ -309,7 +309,7 @@ export class Config {
     key(lead);
     if (template.members.some((m) => m.name === lead))
       throw new Error('Lead and teammate names must differ');
-    for (const member of template.members) newAgentName(db.team, member.name);
+    for (const member of template.members) newAgentName(name, member.name);
     const defaults = { ...template.lead, ...template.defaults };
     if (kind !== undefined) defaults.kind = kind;
     // Resolve a missing kind before creating anything, so a failure leaves no team.
@@ -319,7 +319,7 @@ export class Config {
     )
       defaults.kind = await lifecycle.currentKind();
     if (defaults.kind !== undefined) adapter(defaults.kind);
-    db.create(lead);
+    db.create(lead, name);
     db.bindSession(this.env.HERDR_SOCKET_PATH);
     db.updateTeam((team) => {
       team.repository_dir = this.cwd;

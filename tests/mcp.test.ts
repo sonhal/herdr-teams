@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { afterEach, expect, it } from 'vitest';
 import { Store } from '../src/core/store.js';
@@ -12,15 +13,15 @@ afterEach(() =>
 function setup() {
   const home = mkdtempSync(join(tmpdir(), 'mcp-'));
   homes.push(home);
-  const db = new Store(home, 'demo');
-  db.create('lead');
+  const db = new Store(home, randomUUID());
+  db.create('lead', 'demo');
   db.addMember('alice');
   db.add('Visible task');
   return {
     db,
     server: new McpServer('test', {
       HERDR_TEAMS_HOME: home,
-      HERDR_TEAMS_TEAM: 'demo',
+      HERDR_TEAMS_TEAM: db.id,
       HERDR_TEAMS_AGENT: 'alice',
     }),
   };

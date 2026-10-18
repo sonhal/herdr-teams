@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it } from 'vitest';
 import { Store } from '../src/core/store.js';
 import { Worktrees, git, worktreeStatus } from '../src/core/worktrees.js';
@@ -24,8 +25,8 @@ function setup() {
   writeFileSync(join(home, 'base.txt'), 'base');
   git(home, 'add', '.');
   git(home, 'commit', '-m', 'base');
-  const db = new Store(join(home, 'state'), 'demo');
-  db.create('lead');
+  const db = new Store(join(home, 'state'), randomUUID());
+  db.create('lead', 'demo');
   db.updateTeam((team) => {
     team.repository_dir = home;
   });
