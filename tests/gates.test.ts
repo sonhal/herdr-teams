@@ -178,3 +178,27 @@ it('does not complete a task released while its gate was running', async () => {
     clearTimeout(timer);
   }
 });
+
+it('does not reopen a concurrently released task after a failing gate', async () => {
+  const { db, tasks } = setup();
+  db.updateTeam((team) => {
+    team.hooks = { failure_action: 'reopen_followup' };
+  });
+  const task = await tasks.add('lead', 'race failure', {
+    gate: 'node -e "setTimeout(()=>process.exit(1),100)"',
+  });
+  db.change(task.id, 'claim', 'alice');
+  const completion = tasks.complete(task.id, 'alice');
+  const timer = setTimeout(() => db.change(task.id, 'release', 'lead'), 10);
+  try {
+    await expect(completion).rejects.toThrow('changed');
+    expect(db.task(task.id)).toMatchObject({
+      status: 'pending',
+      owner: null,
+      reopens: 0,
+    });
+    expect(db.tasks()).toHaveLength(1);
+  } finally {
+    clearTimeout(timer);
+  }
+});

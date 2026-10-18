@@ -176,6 +176,8 @@ export async function reconcile(
       if (!pending.length) continue;
       // Recheck after reports and disk operations; herdr also rejects blocked agents.
       const current = (await client.agentGet(agent.pane_id)).agent;
+      if (current.pane_id !== agent.pane_id || current.name !== agent.name)
+        continue;
       if (
         current.agent_status === 'blocked' ||
         current.agent_status === 'unknown'

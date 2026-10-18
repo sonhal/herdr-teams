@@ -23,12 +23,7 @@ export class Tasks {
     });
     if (outcome.code !== 0)
       throw new Error(outcome.stderr || 'Task rejected by hook');
-    const task = this.db.add(subject, options.description);
-    return this.db.editTask(task.id, (t) => {
-      if (options.gate) t.gate = options.gate;
-      if (options.planMode) t.plan_mode = true;
-      if (options.worktree) t.worktree = { required: true };
-    });
+    return this.db.add(subject, options.description, options);
   }
   complete(id: string, actor: string, result?: string): Promise<Task> {
     return this.db.exclusive(`task-${id}`, async () => {
@@ -60,6 +55,14 @@ export class Tasks {
           result,
         });
       if (outcome.code !== 0) {
+        if (JSON.stringify(this.db.task(id)) !== JSON.stringify(task)) {
+          this.db.send(
+            this.db.config().lead,
+            actor,
+            outcome.stderr || `Gate exited ${outcome.code}`,
+          );
+          throw new Error('Task changed while the hook was running; retry');
+        }
         hooks.failure(actor, task, outcome);
         throw new Error(
           outcome.stderr || `Completion rejected (exit ${outcome.code})`,
