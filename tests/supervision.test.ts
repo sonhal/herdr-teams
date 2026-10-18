@@ -279,7 +279,8 @@ it('closes its own pane and exits when no live members remain', async () => {
     runner: async (_binary, argv) => {
       calls.push([...argv]);
       let result: unknown;
-      if (argv[0] === 'session') result = { type: 'session_snapshot', snapshot: {} };
+      if (argv[0] === 'session')
+        result = { type: 'session_snapshot', snapshot: {} };
       else if (argv[0] === 'agent' && argv[1] === 'list')
         result = { type: 'agent_list', agents: [] };
       else return { stdout: '', stderr: '', exitCode: 0 };
