@@ -68,6 +68,7 @@ kind: codex
 thinking: high
 worktree: shared
 ---
+
 Review changes for security defects. Report findings with file and line references.
 ```
 

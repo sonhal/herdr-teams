@@ -44,15 +44,15 @@ the remaining manual checks and agent adapter coverage.
 
 ## Code map and technologies
 
-| Area | Technology and entry point |
-| --- | --- |
-| CLI | TypeScript on Node.js; Commander parses commands in `src/cli/`. |
-| Templates and roles | YAML templates and Markdown role files with YAML frontmatter; parsed with the `yaml` package. |
-| Persistent state | Local JSON records and append-only inbox/event files; [core state](../src/core/README.md). |
+| Area                 | Technology and entry point                                                                                  |
+| -------------------- | ----------------------------------------------------------------------------------------------------------- |
+| CLI                  | TypeScript on Node.js; Commander parses commands in `src/cli/`.                                             |
+| Templates and roles  | YAML templates and Markdown role files with YAML frontmatter; parsed with the `yaml` package.               |
+| Persistent state     | Local JSON records and append-only inbox/event files; [core state](../src/core/README.md).                  |
 | Terminal integration | herdr plugin manifest, CLI and Unix socket API; `src/herdr/` and [runtime hooks](../src/runtime/README.md). |
-| Coding agents | External Claude Code, Codex, pi and OpenCode CLIs; [adapters](../src/adapters/README.md). |
-| Board | Terminal interface; [board implementation](../src/board/README.md). |
-| Checks | Vitest, ESLint, Prettier and the TypeScript compiler. |
+| Coding agents        | External Claude Code, Codex, pi and OpenCode CLIs; [adapters](../src/adapters/README.md).                   |
+| Board                | Terminal interface; [board implementation](../src/board/README.md).                                         |
+| Checks               | Vitest, ESLint, Prettier and the TypeScript compiler.                                                       |
 
 Read [AGENTS.md](../AGENTS.md) for contribution rules. The
 [design plan](PLAN.md) records the architecture and original scope; use the
