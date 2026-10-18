@@ -2,10 +2,12 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readlinkSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { LAUNCHER, installShim } from '../src/core/shim.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -193,7 +195,7 @@ it('uses an overflow tab after four split members without stealing focus', async
 });
 
 describe('install-shim action', () => {
-  it('links the shim once, reports through herdr, and keeps foreign files', async () => {
+  it('installs a launcher once, reports through herdr, and keeps foreign files', async () => {
     const home = mkdtempSync(join(tmpdir(), 'shim-'));
     const fake = await fakeHerdr([
       jsonReply({ type: 'ok' }),
@@ -209,10 +211,14 @@ describe('install-shim action', () => {
       });
     try {
       const bin = join(home, 'bin');
-      expect(await run(bin)).toBe(0);
-      expect(readlinkSync(join(bin, 'herdr-teams'))).toBe(
-        '/plugin-root/bin/herdr-teams',
+      mkdirSync(bin);
+      // A link from the earlier shim installer is replaced, not written through.
+      symlinkSync(
+        join(home, 'old-root', 'bin', 'herdr-teams'),
+        join(bin, 'herdr-teams'),
       );
+      expect(await run(bin)).toBe(0);
+      expect(readFileSync(join(bin, 'herdr-teams'), 'utf8')).toBe(LAUNCHER);
       expect(await run(bin)).toBe(0);
       const other = join(home, 'other');
       mkdirSync(other);
@@ -225,6 +231,45 @@ describe('install-shim action', () => {
         'herdr-teams command installed',
         'herdr-teams command not installed',
       ]);
+    } finally {
+      await fake.cleanup();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('runs the version herdr reports as installed', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'shim-'));
+    // herdr 0.9.5 `plugin list --plugin <id> --json`: the raw plugin_list response.
+    const fake = await fakeHerdr([
+      jsonReply({
+        type: 'plugin_list',
+        plugins: [{ plugin_id: 'herdr-teams', plugin_root: process.cwd() }],
+      }),
+      jsonReply({ type: 'plugin_list', plugins: [] }),
+    ]);
+    try {
+      const launcher = installShim(home);
+      const env = { ...process.env, HERDR_BIN_PATH: fake.binary };
+      const installed = spawnSync(launcher, ['--version'], {
+        env,
+        encoding: 'utf8',
+      });
+      expect(installed.stdout.trim()).toBe(
+        (
+          JSON.parse(readFileSync('package.json', 'utf8')) as {
+            version: string;
+          }
+        ).version,
+      );
+      expect(await fake.calls()).toEqual([
+        ['plugin', 'list', '--plugin', 'herdr-teams', '--json'],
+      ]);
+      const missing = spawnSync(launcher, ['--version'], {
+        env,
+        encoding: 'utf8',
+      });
+      expect(missing.status).toBe(1);
+      expect(missing.stderr).toContain('not installed');
     } finally {
       await fake.cleanup();
       rmSync(home, { recursive: true, force: true });

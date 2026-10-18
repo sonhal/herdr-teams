@@ -1,8 +1,7 @@
-import { lstatSync, mkdirSync, readlinkSync, symlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Config } from '../core/config.js';
-import { pluginRoot } from '../core/paths.js';
+import { installShim } from '../core/shim.js';
 import { Command } from 'commander';
 import { Store } from '../core/store.js';
 import { Lifecycle, type SpawnOptions } from '../core/lifecycle.js';
@@ -45,25 +44,6 @@ export function installLifecycleCommands(
     'directory on PATH',
     join(homedir(), '.local', 'bin'),
   );
-  /** Links the shim; never overwrites anything but its own earlier link. */
-  function installShim(directory: string) {
-    mkdirSync(directory, { recursive: true });
-    const target = join(directory, 'herdr-teams');
-    const source = join(pluginRoot(env), 'bin', 'herdr-teams');
-    try {
-      symlinkSync(source, target);
-    } catch (error) {
-      if (
-        (error as NodeJS.ErrnoException).code !== 'EEXIST' ||
-        !lstatSync(target).isSymbolicLink() ||
-        readlinkSync(target) !== source
-      )
-        throw new Error(
-          `${target} already exists; remove it or pick --directory`,
-        );
-    }
-    return target;
-  }
   shim.action(() => {
     const target = installShim(
       resolve(shim.opts<{ directory: string }>().directory),
