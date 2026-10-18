@@ -133,10 +133,14 @@ export function installCoreCommands(
     const { db, actor } = teamContext(send, env, urgent);
     print(db.send(actor, recipient, body, urgent));
   });
-  const inbox = program.command('inbox');
+  const inbox = program
+    .command('inbox')
+    .option('--all', 'include mail already delivered');
   inbox.action(() => {
     const { db, actor } = teamContext(inbox, env);
-    print(db.inbox(actor));
+    print(
+      inbox.opts<{ all?: boolean }>().all ? db.inbox(actor) : db.unread(actor),
+    );
   });
   const report = program.command('report <body>');
   report.action((body: string) => {

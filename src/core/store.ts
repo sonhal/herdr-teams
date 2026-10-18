@@ -519,11 +519,16 @@ export class Store {
       }
       this.save(task);
       this.event(`task.${action}`, task);
-      if (action === 'assign')
+      // A teammate that auto-claims gets the description with its claim.
+      if (
+        action === 'assign' &&
+        task.owner !== actor &&
+        !this.autoClaims(task.owner!)
+      )
         this.send(
           actor,
           task.owner!,
-          `Task #${task.id} assigned to you: ${task.subject}\n${task.description}\nClaim it with herdr-teams task claim ${task.id}, or wait for automatic claiming.`,
+          `Task #${task.id} assigned to you: ${task.subject}\n${task.description}\nClaim it with herdr-teams task claim ${task.id}.`,
         );
       if (action === 'complete')
         for (const dependent of this.tasks().filter((t) =>
@@ -609,6 +614,15 @@ export class Store {
           .map((line) => JSON.parse(line) as Message)
       : [];
   }
+  /** Mail not yet delivered to the member's pane. */
+  unread(agent: string, state = this.deliveryState()): Message[] {
+    const inbox = this.inbox(agent);
+    const cursor = state.cursors[agent];
+    const index =
+      cursor === undefined ? -1 : inbox.findIndex((m) => m.id === cursor);
+    const acknowledged = new Set(state.acknowledged?.[agent] ?? []);
+    return inbox.slice(index + 1).filter((m) => !acknowledged.has(m.id));
+  }
   deliveryState(): DeliveryState {
     const path = join(this.root, 'delivery.json');
     const state = existsSync(path)
@@ -620,7 +634,6 @@ export class Store {
     state.steered ??= {};
     state.incarnations ??= {};
     state.report_messages ??= {};
-    state.report_boards ??= {};
     state.interrupts ??= {};
     for (const key of [
       'cursors',
@@ -631,7 +644,6 @@ export class Store {
       'steered',
       'incarnations',
       'report_messages',
-      'report_boards',
       'interrupts',
     ] as const) {
       const map = state[key];
@@ -641,6 +653,15 @@ export class Store {
   }
   saveDeliveryState(state: DeliveryState): void {
     atomic(join(this.root, 'delivery.json'), state);
+  }
+  /** Whether delivery claims pending work for the member when it idles. */
+  autoClaims(member: string): boolean {
+    const team = this.config();
+    return (
+      member !== team.lead &&
+      team.auto_claim !== false &&
+      team.details?.[member]?.auto_claim !== false
+    );
   }
   autoClaim(actor: string, assignedOnly = false): Task | undefined {
     return this.lock(() => {
@@ -683,8 +704,6 @@ export class Store {
 export interface DeliveryState {
   incarnations?: Record<string, string>;
   report_messages?: Record<string, string>;
-  /** Owned tasks and worktree status as of the last turn report. */
-  report_boards?: Record<string, string>;
   interrupts?: Record<string, boolean>;
   blocked?: Record<string, boolean>;
   acknowledged?: Record<string, string[]>;

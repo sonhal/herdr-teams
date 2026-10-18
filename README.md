@@ -70,6 +70,8 @@ completed. `task assign`, `task release`, dependency edits and task edits are
 restricted to the lead or a user outside a member pane. `task update` accepts
 `--subject` and `--description`; `task complete` accepts `--result`.
 `team list`, `task list`, `task show`, `broadcast` and `report` are also available.
+`inbox` prints mail not yet delivered to the caller's pane; `inbox --all`
+prints the full history. Completing a task tells the lead its result.
 Core commands currently print JSON, including when `--json` is omitted.
 Messages are persisted and delivered in batches when recipients are idle.
 Blocked recipients retain their mail. A message body is limited to 32 KiB;

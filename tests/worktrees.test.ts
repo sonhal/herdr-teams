@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it } from 'vitest';
 import { Store } from '../src/core/store.js';
+import { Tasks } from '../src/core/tasks.js';
 import { runCliAsync } from '../src/cli/index.js';
 import { Worktrees, git, worktreeStatus } from '../src/core/worktrees.js';
 import { HerdrClient } from '../src/herdr/index.js';
@@ -159,4 +160,32 @@ it('cleanup --apply removes every eligible worktree past one that fails', async 
   } finally {
     await fake.cleanup();
   }
+});
+it('reports branch, head, commit count and checkout state on completion', async () => {
+  const { db, home } = setup();
+  const path = join(home, 'alice');
+  const base = git(home, 'rev-parse', 'HEAD');
+  git(home, 'worktree', 'add', '-b', 'team/demo/alice', path);
+  db.reserveMember('alice', {
+    kind: 'codex',
+    state: 'idle',
+    worktree: {
+      path,
+      branch: 'team/demo/alice',
+      base,
+      pane_id: agent.pane_id,
+      tab_id: agent.tab_id,
+      workspace_id: agent.workspace_id,
+    },
+  });
+  writeFileSync(join(path, 'new.txt'), 'new');
+  git(path, 'add', '.');
+  git(path, 'commit', '-m', 'work');
+  const head = git(path, 'rev-parse', 'HEAD');
+  const task = db.add('Write new.txt');
+  db.change(task.id, 'claim', 'alice');
+  await new Tasks(db, {}).complete(task.id, 'alice');
+  expect(db.inbox('lead').at(-1)!.body).toBe(
+    `Completed task #${task.id}: Write new.txt\nWorktree: team/demo/alice at ${head.slice(0, 12)}, 1 commit(s) on ${base.slice(0, 12)}, clean`,
+  );
 });
