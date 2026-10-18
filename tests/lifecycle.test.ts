@@ -443,7 +443,7 @@ describe('herdr agent names', () => {
       await expect(
         new Lifecycle(db, new HerdrClient({ env: fake.env }), fake.env).spawn(
           'b'.repeat(12),
-          { kind: 'codex', prompt: 'test' },
+          { prompt: 'test' },
         ),
       ).rejects.toThrow(/32 characters/);
       expect(await fake.calls()).toHaveLength(0);

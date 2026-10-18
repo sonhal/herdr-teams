@@ -163,7 +163,9 @@ fail when the definition is loaded.
 Templates live in `.herdr/teams.yaml` (project) or
 `~/.config/herdr-teams/teams.yaml` (global). Each top-level key is a template
 name; a project template replaces a global one of the same name. Template,
-member and definition names match `^[a-z][a-z0-9_-]{0,31}$`.
+member and definition names match `^[a-z][a-z0-9_-]{0,31}$`. herdr names a
+teammate `<team>-<member>`, which must fit in 32 characters; `team start`
+refuses a template that breaks this before creating the team.
 
 ```yaml
 feature:

@@ -75,6 +75,16 @@ export function agentName(team: Team, member: string): string {
   return team.details?.[member]?.agent_name ?? member;
 }
 
+/** herdr 0.9.5 caps agent names at 32 characters. */
+export function newAgentName(team: string, member: string): string {
+  const name = `${team}-${member}`;
+  if (name.length > 32)
+    throw new Error(
+      `herdr agent name ${name} exceeds 32 characters; use a shorter team or member name`,
+    );
+  return name;
+}
+
 export interface Member {
   kind: string;
   /** Name in herdr; absent for teammates spawned before names carried the team. */

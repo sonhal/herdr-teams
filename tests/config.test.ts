@@ -143,3 +143,26 @@ it('rejects invalid settings before creating a team or invoking herdr', async ()
     await fake.cleanup();
   }
 });
+it('rejects a member whose herdr name would be too long before creating a team', async () => {
+  const { home, env, config } = setup();
+  writeFileSync(
+    join(home, '.herdr', 'teams.yaml'),
+    `long:\n  members: [{name: ${'b'.repeat(12)}, kind: codex}]\n`,
+  );
+  const db = new Store(join(home, 'state'), 'a'.repeat(20));
+  const fake = await fakeHerdr([]);
+  try {
+    await expect(
+      config.start(
+        db,
+        new Lifecycle(db, new HerdrClient({ env: fake.env }), env),
+        'long',
+        'lead',
+      ),
+    ).rejects.toThrow(/32 characters/);
+    expect(Store.teams(db.home)).toHaveLength(0);
+    expect(await fake.calls()).toHaveLength(0);
+  } finally {
+    await fake.cleanup();
+  }
+});
