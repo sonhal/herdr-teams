@@ -55,7 +55,7 @@ Create a team from the lead pane, then spawn members:
 ```sh
 herdr-teams --json team create demo
 export HERDR_TEAMS_TEAM="<id returned by team create>"
-herdr-teams spawn alice --kind codex --thinking high --prompt "Implement login"
+herdr-teams spawn alice --kind <model> --thinking high --prompt "Implement login"
 herdr-teams spawn rev --agent reviewer --prompt "Review alice's work"
 herdr-teams team list
 herdr-teams inbox                       # mail not yet delivered to you; --all for history
@@ -110,7 +110,7 @@ herdr-teams log --follow
 herdr-teams board            # interactive; use board --once for a snapshot
 ```
 
-`steer` and urgent mail steer a working Codex agent; other kinds are
+`steer` and urgent mail steer a working agent; other kinds are
 interrupted and receive the message when idle. Mail stays queued while the
 recipient is blocked.
 
