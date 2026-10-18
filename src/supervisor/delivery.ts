@@ -187,14 +187,15 @@ export async function reconcile(
               (team.details?.[member]?.started_at ?? 0),
         )
         .at(-1);
+      // A message the teammate sent this turn already reaches the lead, and
+      // the pane would only echo it.
       const output =
-        (last && last.id !== state.report_messages![member]
-          ? last.body
-          : undefined) ??
-        (await client.paneRead(agent.pane_id, {
-          source: 'recent-unwrapped',
-          lines: 20,
-        }));
+        last && last.id !== state.report_messages![member]
+          ? 'Its message to you is above.'
+          : await client.paneRead(agent.pane_id, {
+              source: 'recent-unwrapped',
+              lines: 20,
+            });
       db.send(
         member,
         team.lead,

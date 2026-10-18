@@ -112,6 +112,20 @@ function harness() {
   };
 }
 
+it('does not repeat the teammate’s own message to the lead in its turn report', async () => {
+  const db = setup();
+  const h = harness();
+  db.send('alice', 'lead', 'dev online: all good');
+  h.setLive({ ...agent, completion_seq: 1 });
+  h.setOutput('pane echo of dev online: all good');
+  await reconcile(db, h.client);
+  const reports = db.inbox('lead').filter((m) => m.kind === 'report');
+  expect(reports).toHaveLength(1);
+  expect(reports[0]!.body).toContain('Turn completed');
+  expect(reports[0]!.body).not.toContain('all good');
+  expect(h.calls.some((c) => c[1] === 'read')).toBe(false);
+});
+
 it('does not reuse a direct message in subsequent turn reports', async () => {
   const db = setup();
   const h = harness();
