@@ -1,6 +1,7 @@
 # Project instructions
 
 ## Ethos
+
 - herdr-teams allows team members to communicate with each other so make sure
   that features are very careful about bloating the context unnecessary much.
   The agents should get the information they need from each other but always
