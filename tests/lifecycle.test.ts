@@ -196,6 +196,102 @@ it('uses an overflow tab after four split members without stealing focus', async
   }
 });
 
+describe('split placement', () => {
+  const split = jsonReply({ type: 'pane_info', pane });
+  const launched = [
+    started,
+    metadata,
+    prompted,
+    jsonReply({ type: 'agent_info', agent }),
+  ];
+  function leadTeam(layout?: { count: number; number: number }) {
+    const db = setup();
+    db.updateTeam((team) => {
+      team.lead_pane_id = 'w1:p1';
+      if (layout)
+        team.layout = { tab_id: 'w1:t1', pane_id: 'w1:p7', ...layout };
+    });
+    return db;
+  }
+  async function spawn(db: Store, replies: Parameters<typeof fakeHerdr>[0]) {
+    const fake = await fakeHerdr(replies);
+    try {
+      await new Lifecycle(
+        db,
+        new HerdrClient({ env: fake.env }),
+        fake.env,
+      ).spawn('alice', { prompt: 'test' });
+      return (await fake.calls())[0]!;
+    } finally {
+      await fake.cleanup();
+    }
+  }
+
+  it('puts the first teammate beside the lead in the lead’s tab', async () => {
+    const db = leadTeam();
+    const call = await spawn(db, [split, ...launched]);
+    expect(call.slice(0, 6)).toEqual([
+      'pane',
+      'split',
+      '--pane',
+      'w1:p1',
+      '--direction',
+      'right',
+    ]);
+    expect(call).toContain('--no-focus');
+    expect(db.config().layout).toMatchObject({
+      pane_id: pane.pane_id,
+      count: 1,
+      number: 0,
+    });
+  });
+  it('stacks later teammates below the last one in the lead’s tab', async () => {
+    const db = leadTeam({ count: 1, number: 0 });
+    const call = await spawn(db, [split, ...launched]);
+    expect(call.slice(0, 6)).toEqual([
+      'pane',
+      'split',
+      '--pane',
+      'w1:p7',
+      '--direction',
+      'down',
+    ]);
+    expect(db.config().layout!.count).toBe(2);
+  });
+  it('overflows into a team tab once the lead’s tab holds four', async () => {
+    const db = leadTeam({ count: 4, number: 0 });
+    const call = await spawn(db, [location, ...launched]);
+    expect(call).toContain('team:demo');
+    expect(db.config().layout).toMatchObject({ count: 1, number: 1 });
+  });
+  it('uses a team tab when the lead pane is gone', async () => {
+    const db = leadTeam();
+    const fake = await fakeHerdr([
+      // herdr v0.9.5: pane split on a missing pane exits 1 with this envelope.
+      {
+        exitCode: 1,
+        stderr: JSON.stringify({
+          id: 'cli:pane:split',
+          error: { code: 'pane_not_found', message: 'pane not found' },
+        }),
+      },
+      location,
+      ...launched,
+    ]);
+    try {
+      await new Lifecycle(
+        db,
+        new HerdrClient({ env: fake.env }),
+        fake.env,
+      ).spawn('alice', { prompt: 'test' });
+      expect((await fake.calls())[1]).toContain('team:demo');
+      expect(db.config().layout).toMatchObject({ count: 1, number: 1 });
+    } finally {
+      await fake.cleanup();
+    }
+  });
+});
+
 describe('install-shim action', () => {
   it('installs a launcher once, reports through herdr, and keeps foreign files', async () => {
     const home = mkdtempSync(join(tmpdir(), 'shim-'));

@@ -90,8 +90,9 @@ herdr-teams --team demo shutdown alice
 Inside herdr, team state defaults to herdr's plugin state directory, the one
 its startup and event hooks read; leave `HERDR_TEAMS_HOME` unset there. A team
 belongs to the herdr session it was created in: commands and hooks from other
-sessions leave it alone. Members receive team identity and the CLI on PATH. Splits use team tabs with
-four teammates per tab; `--placement tab|workspace` gives a member its own
+sessions leave it alone. Members receive team identity and the CLI on PATH. Splits put the first
+four teammates beside the lead in its tab, then in team tabs of four;
+`--placement tab|workspace` gives a member its own
 location. All panes open without taking focus. `--model` and `--thinking`
 override team defaults. Use `--worktree dedicated` for an isolated checkout, or `auto` to start shared.
 
@@ -104,8 +105,8 @@ retain the pane and send the lead arguments and recent output.
 ## Supervision
 
 The supervisor opens after team creation and reopens on herdr startup. Set
-`supervisor.mode` to `off` to use event hooks alone, or `tab` for a separate
-system tab. Defaults are a 30-second tick, a 10-minute no-progress advisory,
+`supervisor.mode` to `off` to use event hooks alone, or `pane` for a split
+beside the lead instead of its own tab. Defaults are a 30-second tick, a 10-minute no-progress advisory,
 a 2-minute needs-input advisory and a 5-minute unknown-state advisory. Set a
 threshold to zero to disable it. Advisories inform the lead; they do not kill
 or restart teammates. Interactive or recently focused members stay quiet.
@@ -188,7 +189,7 @@ Define teams in `.herdr/teams.yaml` or `~/.config/herdr-teams/teams.yaml`:
 ```yaml
 review:
   defaults: { kind: codex, thinking: medium }
-  supervisor: { mode: pane }
+  supervisor: { mode: tab }
   members:
     - { name: alice, agent: reviewer }
   tasks:

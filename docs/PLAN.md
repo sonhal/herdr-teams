@@ -202,9 +202,10 @@ herdr-teams spawn <name> [--agent <definition>] [--kind claude|codex|pi]
    overrides the team defaults, which override the lead's own agent CLI and
    model.
 2. **Choose a location.**
-   - Shared checkout: the team tab `team:<team>`. Splits go right, then down,
-     with up to 4 teammates per tab; extra teammates go into an overflow
-     tab `team:<team>:2`.
+   - Shared checkout: the lead's tab, stacked beside the lead, for the first
+     4 teammates; later ones go into team tabs `team:<team>`, then
+     `team:<team>:2`, of 4 each, split right, then down. If the lead pane is
+     gone, teammates start in a team tab.
    - Dedicated worktree: a new grouped worktree workspace (§10), using its
      root pane.
    - `--placement tab|workspace` puts the teammate in its own tab or
@@ -567,8 +568,8 @@ a plugin pane with a one-line status (`supervisor · 3 members · 1 advisory`).
 
   | `supervisor.mode` | Behaviour |
   |---|---|
-  | `pane` (default) | a narrow pane in the team tab |
-  | `tab` | its own `team:<team>:system` tab, keeping the team tab agents-only |
+  | `tab` (default) | its own tab, keeping the lead's and team tabs free of it |
+  | `pane` | a split beside the lead |
   | `off` | no supervisor: delivery and state tracking run through the event hooks, and there are no stall advisories |
 
 - **Resilience:** if the supervisor pane is closed, delivery and state
@@ -647,7 +648,7 @@ auth-squad:
     max_reopens: 2
     followup_owner: member
   supervisor:
-    mode: pane                  # pane | tab | off
+    mode: tab                   # tab | pane | off
     tick_seconds: 30
     no_progress_minutes: 10     # 0 disables an advisory
     needs_input_minutes: 2

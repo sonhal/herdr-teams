@@ -3,7 +3,7 @@ import { adapter } from '../adapters/index.js';
 import { HerdrClient, HerdrApiError, type PaneInfo } from '../herdr/index.js';
 import { Worktrees } from './worktrees.js';
 import { pluginRoot } from './paths.js';
-import { Store } from './store.js';
+import { Store, type Team } from './store.js';
 
 export interface SpawnOptions {
   definition?: string;
@@ -117,45 +117,7 @@ export class Lifecycle {
           env,
           team.workspace_id,
         );
-      else if (
-        !team.layout ||
-        team.layout.count === 0 ||
-        team.layout.count >= 4
-      ) {
-        const number = (team.layout?.number ?? 0) + 1;
-        pane = await this.client.createLocation(
-          'tab',
-          `team:${team.name}${number === 1 ? '' : `:${number}`}`,
-          cwd,
-          env,
-          team.workspace_id ?? this.env.HERDR_WORKSPACE_ID,
-        );
-        const created = pane;
-        this.db.updateTeam((config) => {
-          config.layout = {
-            tab_id: created.tab_id,
-            pane_id: created.pane_id,
-            count: 1,
-            number,
-          };
-        });
-      } else {
-        pane = (
-          await this.client.paneSplit({
-            pane: team.layout.pane_id,
-            direction: team.layout.count === 1 ? 'right' : 'down',
-            cwd,
-            env,
-          })
-        ).pane;
-        const created = pane;
-        this.db.updateTeam((config) => {
-          if (config.layout) {
-            config.layout.count += 1;
-            config.layout.pane_id = created.pane_id;
-          }
-        });
-      }
+      else pane = await this.split(team, cwd, env);
       this.db.patchMember(member, {
         pane_id: pane.pane_id,
         workspace_id: pane.workspace_id,
@@ -239,6 +201,79 @@ export class Lifecycle {
       this.db.config().lead,
       `Shutdown rejected: ${reason}`,
     );
+  }
+  /**
+   * Layout number 0 is the lead's tab: it takes the first four teammates,
+   * later ones overflow into team tabs. A closed lead pane sends them
+   * straight to a team tab.
+   */
+  private async split(
+    team: Team,
+    cwd: string,
+    env: Record<string, string>,
+  ): Promise<PaneInfo> {
+    const layout = team.layout;
+    if (
+      team.lead_pane_id &&
+      (!layout || (layout.number === 0 && layout.count === 0))
+    ) {
+      try {
+        const { pane } = await this.client.paneSplit({
+          pane: team.lead_pane_id,
+          direction: 'right',
+          cwd,
+          env,
+        });
+        this.db.updateTeam((config) => {
+          config.layout = {
+            tab_id: pane.tab_id,
+            pane_id: pane.pane_id,
+            count: 1,
+            number: 0,
+          };
+        });
+        return pane;
+      } catch (error) {
+        if (
+          !(error instanceof HerdrApiError) ||
+          error.code !== 'pane_not_found'
+        )
+          throw error;
+      }
+    }
+    if (layout && layout.count > 0 && layout.count < 4) {
+      const { pane } = await this.client.paneSplit({
+        pane: layout.pane_id,
+        // In the lead's tab, teammates stack beside the lead.
+        direction: layout.number > 0 && layout.count === 1 ? 'right' : 'down',
+        cwd,
+        env,
+      });
+      this.db.updateTeam((config) => {
+        if (config.layout) {
+          config.layout.count += 1;
+          config.layout.pane_id = pane.pane_id;
+        }
+      });
+      return pane;
+    }
+    const number = (layout?.number ?? 0) + 1;
+    const pane = await this.client.createLocation(
+      'tab',
+      `team:${team.name}${number === 1 ? '' : `:${number}`}`,
+      cwd,
+      env,
+      team.workspace_id ?? this.env.HERDR_WORKSPACE_ID,
+    );
+    this.db.updateTeam((config) => {
+      config.layout = {
+        tab_id: pane.tab_id,
+        pane_id: pane.pane_id,
+        count: 1,
+        number,
+      };
+    });
+    return pane;
   }
   async kill(member: string) {
     const details = this.db.config().details?.[member];
