@@ -229,7 +229,12 @@ it('shutdown accepts on the member behalf and closes an idle member', async () =
       ['agent', 'prompt'],
       ['pane', 'close'],
     ]);
-    expect((await fake.calls())[1]).toEqual(['agent', 'prompt', 'alice', '/quit']);
+    expect((await fake.calls())[1]).toEqual([
+      'agent',
+      'prompt',
+      'alice',
+      '/quit',
+    ]);
   } finally {
     await fake.cleanup();
   }
@@ -243,7 +248,10 @@ it('shutdown leaves a working member accepted until it idles', async () => {
     state: 'working',
   });
   const fake = await fakeHerdr([
-    jsonReply({ type: 'agent_info', agent: { ...agent, agent_status: 'working' } }),
+    jsonReply({
+      type: 'agent_info',
+      agent: { ...agent, agent_status: 'working' },
+    }),
     prompted,
   ]);
   try {

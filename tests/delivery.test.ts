@@ -8,7 +8,7 @@ import { MAX_MESSAGE_BYTES, Store } from '../src/core/store.js';
 import { Hooks } from '../src/core/hooks.js';
 import { HerdrClient } from '../src/herdr/index.js';
 import { reconcile } from '../src/supervisor/delivery.js';
-import { agent, pane } from './helpers/fixtures.js';
+import { agent } from './helpers/fixtures.js';
 import { fakeHerdr, jsonReply } from './helpers/fake-herdr.js';
 
 const homes: string[] = [];
@@ -435,18 +435,7 @@ it('creates a team from an ordinary herdr pane in the hooks’ state home', asyn
     'plugins',
     'herdr-teams',
   );
-  const fake = await fakeHerdr([
-    jsonReply({ type: 'agent_list', agents: [] }),
-    // herdr v0.9.5 src/api/schema/{response,plugins}.rs: PluginPaneInfo.
-    jsonReply({
-      type: 'plugin_pane_opened',
-      plugin_pane: {
-        plugin_id: 'herdr-teams',
-        entrypoint: 'supervisor',
-        pane: { ...pane, pane_id: 'w1:p5' },
-      },
-    }),
-  ]);
+  const fake = await fakeHerdr([jsonReply({ type: 'agent_list', agents: [] })]);
   try {
     let stdout = '';
     let stderr = '';
@@ -474,11 +463,10 @@ it('creates a team from an ordinary herdr pane in the hooks’ state home', asyn
     expect(new Store(state, id).config()).toMatchObject({
       herdr_socket: 'session-a.sock',
       lead_pane_id: 'w1:p1',
-      supervisor: { mode: 'tab', pane_id: 'w1:p5' },
     });
-    const open = (await fake.calls())[1]!;
-    expect(open).toContain(`HERDR_TEAMS_HOME=${state}`);
-    expect(open[open.indexOf('--placement') + 1]).toBe('tab');
+    // No live members yet: an empty team does not hold a supervisor pane.
+    expect(new Store(state, id).config().supervisor).toBeUndefined();
+    expect(await fake.calls()).toHaveLength(1);
   } finally {
     await fake.cleanup();
   }
