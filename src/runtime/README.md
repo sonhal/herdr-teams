@@ -11,10 +11,10 @@ Blocked, missing and unknown agents keep their mail. Working Codex agents receiv
 urgent mail; other kinds use interrupt-then-idle delivery. Blocked recipients
 produce one lead notice per observed blocked episode. Acknowledged urgent messages do not skip older ordinary mail.
 
-A completed turn in which the teammate sent the lead nothing produces a report
-with recent pane output, keyed by member incarnation and herdr's completion
-sequence, but only when the teammate holds an active task or the turn was its
-first. Task completions reach the lead from `task complete` instead. Idle
+A completed turn in which the teammate sent the lead nothing produces a short
+report naming its active tasks, keyed by member incarnation and herdr's
+completion sequence, but only when the teammate holds an active task or the
+turn was its first. The lead uses `peek` for the pane. Task completions reach the lead from `task complete` instead. Idle
 teammates without an active task claim assigned work first, then unassigned
 work when no mail is waiting, unless `auto_claim` is false.
 

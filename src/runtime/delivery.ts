@@ -164,14 +164,10 @@ export async function reconcile(
         const messaged = last && last.id !== state.report_messages![member];
         // Completions and plans reach the lead as the teammate's own mail.
         // A turn that ends silently is reported only when the lead would
-        // otherwise not learn why work stopped: an active task, or the spawn
-        // prompt's turn. The pane is then the only record of what happened.
+        // otherwise not learn that work stopped: an active task, or the spawn
+        // prompt's turn. The lead peeks if it needs the pane.
         const first = state.reports[member] === undefined;
         if (!messaged && (active.length || first)) {
-          const output = await client.paneRead(agent.pane_id, {
-            source: 'recent-unwrapped',
-            lines: 20,
-          });
           const tasks = active
             .map((t) => `#${t.id} ${t.status}: ${t.subject}`)
             .join('\n');
@@ -179,7 +175,7 @@ export async function reconcile(
             member,
             team.lead,
             clip(
-              `${member} stopped without messaging you${tasks ? ` while holding:\n${tasks}` : '.'}\n${output}`,
+              `${member} stopped without messaging you${tasks ? ` while holding:\n${tasks}` : '.'}\nPeek: herdr-teams peek ${member}`,
             ),
             false,
             'report',

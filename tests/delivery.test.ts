@@ -123,17 +123,13 @@ it('claims only an unblocked task and queues its prompt durably', async () => {
 it('coalesces completed-turn reports using completion sequence', async () => {
   const db = setup();
   const completed = jsonReply({ type: 'agent_list', agents: [agent] });
-  const fake = await fakeHerdr([
-    completed,
-    { stdout: 'Codex result' },
-    completed,
-  ]);
+  const fake = await fakeHerdr([completed, completed]);
   try {
     const client = new HerdrClient({ env: fake.env });
     await reconcile(db, client);
     await reconcile(db, client);
     expect(db.inbox('lead')).toHaveLength(1);
-    expect(db.inbox('lead')[0]!.body).toContain('Codex result');
+    expect(db.inbox('lead')[0]!.body).toContain('alice stopped');
   } finally {
     await fake.cleanup();
   }
@@ -153,29 +149,6 @@ it('rechecks live state before prompting', async () => {
     await reconcile(db, new HerdrClient({ env: fake.env }));
     expect((await fake.calls()).some((c) => c[1] === 'prompt')).toBe(false);
     expect(db.deliveryState().cursors).toEqual({});
-  } finally {
-    await fake.cleanup();
-  }
-});
-
-it('does not recursively quote generated reports on later turns', async () => {
-  const db = setup();
-  db.change(db.add('Long task').id, 'claim', 'alice');
-  const fake = await fakeHerdr([
-    jsonReply({ type: 'agent_list', agents: [agent] }),
-    { stdout: 'first output' },
-    jsonReply({
-      type: 'agent_list',
-      agents: [{ ...agent, completion_seq: 5 }],
-    }),
-    { stdout: 'second output' },
-  ]);
-  try {
-    const client = new HerdrClient({ env: fake.env });
-    await reconcile(db, client);
-    await reconcile(db, client);
-    expect(db.inbox('lead')[1]!.body).toContain('second output');
-    expect(db.inbox('lead')[1]!.body).not.toContain('first output');
   } finally {
     await fake.cleanup();
   }
@@ -634,7 +607,6 @@ it('event hooks wake the lead with one completion report across repeated events'
   // herdr v0.9.5: lifecycle hook payload uses pane_id; metadata commands are quiet.
   const fake = await fakeHerdr([
     agents,
-    { stdout: 'Finished the task' },
     jsonReply({ type: 'agent_info', agent: lead }),
     jsonReply({ type: 'agent_prompted', agent: lead }),
     { stdout: '' },
@@ -662,7 +634,7 @@ it('event hooks wake the lead with one completion report across repeated events'
     const prompts = calls.filter((c) => c[1] === 'prompt');
     expect(prompts).toHaveLength(1);
     expect(prompts[0]![2]).toBe(lead.pane_id);
-    expect(prompts[0]![3]).toContain('Finished the task');
+    expect(prompts[0]![3]).toContain('alice stopped without messaging you');
     expect(calls.some((c) => c[0] === 'plugin')).toBe(false);
   } finally {
     await fake.cleanup();
