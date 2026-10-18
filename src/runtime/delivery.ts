@@ -95,6 +95,7 @@ export async function reconcile(
     state.incarnations ??= {};
     state.interrupts ??= {};
     state.report_messages ??= {};
+    state.report_boards ??= {};
     for (const [member, agent] of members) {
       const incarnation = JSON.stringify([
         agent.pane_id,
@@ -104,6 +105,7 @@ export async function reconcile(
       if (state.incarnations[member] !== incarnation) {
         state.incarnations[member] = incarnation;
         delete state.reports[member];
+        delete state.report_boards[member];
         if (state.idle_hooks) delete state.idle_hooks[member];
         if (state.blocked) delete state.blocked[member];
         delete state.interrupts[member];
@@ -151,7 +153,14 @@ export async function reconcile(
         db.saveDeliveryState(state);
       }
 
-      const tasks = db.tasks().filter((t) => t.owner === member);
+      const tasks = db
+        .tasks()
+        .filter((t) => t.owner === member)
+        .map((t) => `#${t.id} ${t.status}: ${t.subject}`)
+        .join('\n');
+      const worktree = team.details?.[member]?.worktree;
+      const status = worktree ? JSON.stringify(worktreeStatus(worktree)) : '';
+      const board = `${tasks}\n${status}`;
       const last = db
         .inbox(team.lead)
         .filter(
@@ -162,25 +171,27 @@ export async function reconcile(
               (team.details?.[member]?.started_at ?? 0),
         )
         .at(-1);
-      // A message the teammate sent this turn already reaches the lead, and
-      // the pane would only echo it.
-      const output =
-        last && last.id !== state.report_messages![member]
+      const messaged = last && last.id !== state.report_messages![member];
+      // A message the teammate sent this turn already reaches the lead; the
+      // report only adds what changed on the board, or the pane when it said
+      // nothing.
+      if (!messaged || board !== (state.report_boards![member] ?? '\n')) {
+        const output = messaged
           ? 'Its message to you is above.'
           : await client.paneRead(agent.pane_id, {
               source: 'recent-unwrapped',
               lines: 20,
             });
-      db.send(
-        member,
-        team.lead,
-        clip(
-          `Turn completed.\n${tasks.map((t) => `#${t.id} ${t.status}: ${t.subject}`).join('\n')}\n${output}\n${team.details?.[member]?.worktree ? JSON.stringify(worktreeStatus(team.details[member]!.worktree!)) : ''}`,
-        ),
-        false,
-        'report',
-      );
+        db.send(
+          member,
+          team.lead,
+          clip(`Turn completed.\n${tasks}\n${output}\n${status}`),
+          false,
+          'report',
+        );
+      }
       state.reports[member] = seq;
+      state.report_boards![member] = board;
       if (last) state.report_messages![member] = last.id;
       db.saveDeliveryState(state);
     }).catch((error: unknown) => failures.push(error));

@@ -107,18 +107,34 @@ function harness() {
   };
 }
 
-it('does not repeat the teammate’s own message to the lead in its turn report', async () => {
+it('sends no turn report when the teammate messaged the lead and no task changed', async () => {
   const db = setup();
   const h = harness();
   db.send('alice', 'lead', 'dev online: all good');
   h.setLive({ ...agent, completion_seq: 1 });
   h.setOutput('pane echo of dev online: all good');
   await reconcile(db, h.client);
+  expect(db.inbox('lead').filter((m) => m.kind === 'report')).toHaveLength(0);
+  expect(h.calls.some((c) => c[1] === 'read')).toBe(false);
+  expect(db.deliveryState().reports.alice).toBe(1);
+});
+
+it('points to the teammate’s message when its tasks changed that turn', async () => {
+  const db = setup();
+  const h = harness();
+  const task = db.add('Add login');
+  db.change(task.id, 'claim', 'alice');
+  db.send('alice', 'lead', 'claimed login');
+  h.setLive({ ...agent, completion_seq: 1 });
+  await reconcile(db, h.client);
+  db.send('alice', 'lead', 'still on login');
+  h.setLive({ ...agent, completion_seq: 2 });
+  await reconcile(db, h.client);
   const reports = db.inbox('lead').filter((m) => m.kind === 'report');
   expect(reports).toHaveLength(1);
-  expect(reports[0]!.body).toContain('Turn completed');
-  expect(reports[0]!.body).not.toContain('all good');
-  expect(h.calls.some((c) => c[1] === 'read')).toBe(false);
+  expect(reports[0]!.body).toContain(`#${task.id} in_progress: Add login`);
+  expect(reports[0]!.body).toContain('Its message to you is above.');
+  expect(reports[0]!.body).not.toContain('claimed login');
 });
 
 it('does not reuse a direct message in subsequent turn reports', async () => {
@@ -131,9 +147,9 @@ it('does not reuse a direct message in subsequent turn reports', async () => {
   h.setOutput('second turn output');
   await reconcile(db, h.client);
   const reports = db.inbox('lead').filter((m) => m.kind === 'report');
-  expect(reports).toHaveLength(2);
-  expect(reports[1]!.body).toContain('second turn output');
-  expect(reports[1]!.body).not.toContain('first turn message');
+  expect(reports).toHaveLength(1);
+  expect(reports[0]!.body).toContain('second turn output');
+  expect(reports[0]!.body).not.toContain('first turn message');
 });
 
 it('reports every new completion after a member respawns', async () => {

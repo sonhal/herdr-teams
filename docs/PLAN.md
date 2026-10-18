@@ -333,9 +333,11 @@ approved something counts for nothing; only the real commands change state.
 ### 7.4 Reports to the lead
 
 When a teammate finishes a turn and goes idle, the lead automatically gets a
-short report. It contains the board changes since the last report and, if
+short report. It contains the teammate's tasks and worktree status and, if
 the teammate sent the lead no message that turn, the last lines of its
-output; a message it did send is pointed to, not repeated.
+output; a message it did send is pointed to, not repeated. When the
+teammate messaged the lead and its tasks and worktree status are unchanged
+since the last report, no report is sent.
 Reports are coalesced so the lead isn't flooded. Advisories (§11.3) and end
 states (§11.2) reach the lead the same way.
 
