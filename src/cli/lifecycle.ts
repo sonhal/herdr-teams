@@ -1,0 +1,116 @@
+import { mkdirSync, symlinkSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { pluginRoot } from '../core/paths.js';
+import { Command } from 'commander';
+import { Store } from '../core/store.js';
+import { Lifecycle, type SpawnOptions } from '../core/lifecycle.js';
+import { HerdrClient } from '../herdr/index.js';
+import { readIdentity } from './identity.js';
+
+export function installLifecycleCommands(
+  program: Command,
+  env: NodeJS.ProcessEnv,
+  output: (text: string) => void,
+) {
+  const print = (value: unknown) =>
+    output(JSON.stringify(value, null, 2) + '\n');
+  function replace(name: string, usage: string) {
+    const previous = program.commands.find((c) => c.name() === name);
+    if (previous)
+      (program.commands as Command[]).splice(
+        program.commands.indexOf(previous),
+        1,
+      );
+    return program.command(usage);
+  }
+  function context(cmd: Command, privileged = true) {
+    const identity = readIdentity(
+      env,
+      cmd.optsWithGlobals<{ team?: string }>().team,
+    );
+    if (!identity.home || !identity.team)
+      throw new Error('Set HERDR_TEAMS_HOME and select a team');
+    const db = new Store(identity.home, identity.team);
+    const actor = db.authorize(identity.agent, privileged);
+    return {
+      db,
+      actor,
+      lifecycle: new Lifecycle(db, new HerdrClient({ env }), env),
+    };
+  }
+  const shim = replace('install-shim', 'install-shim').option(
+    '--directory <path>',
+    'directory on PATH',
+    join(homedir(), '.local', 'bin'),
+  );
+  shim.action(() => {
+    const directory = resolve(shim.opts<{ directory: string }>().directory);
+    mkdirSync(directory, { recursive: true });
+    const target = join(directory, 'herdr-teams');
+    symlinkSync(join(pluginRoot(env), 'bin', 'herdr-teams'), target);
+    print({ path: target, instruction: 'Ensure this directory is on PATH' });
+  });
+  const spawn = replace('spawn', 'spawn <name>')
+    .option('--kind <kind>', 'agent CLI')
+    .option('--model <model>', 'model name')
+    .option('--thinking <level>', 'thinking effort')
+    .option('--placement <placement>', 'split, tab or workspace', 'split')
+    .option('--worktree <mode>', 'shared or auto', 'shared')
+    .option('--plan-mode', 'request a plan before coding')
+    .requiredOption('--prompt <text>', 'opening instructions');
+  spawn.action(async (member: string) => {
+    print(
+      await context(spawn).lifecycle.spawn(member, spawn.opts<SpawnOptions>()),
+    );
+  });
+  const shutdown = replace('shutdown', 'shutdown [name]')
+    .option('--accept', 'accept your pending shutdown request')
+    .option('--reject <reason>', 'reject your pending shutdown request');
+  shutdown.action((member?: string) => {
+    const flags = shutdown.opts<{ accept?: boolean; reject?: string }>();
+    if (flags.accept && flags.reject !== undefined)
+      throw new Error('Choose accept or reject');
+    const response = flags.accept || flags.reject !== undefined;
+    const { lifecycle, actor } = context(shutdown, !response);
+    if (response && member)
+      throw new Error('Reply to shutdown without a member name');
+    if (!response && !member) throw new Error('Select a member');
+    print(
+      flags.accept
+        ? lifecycle.acceptShutdown(actor)
+        : flags.reject !== undefined
+          ? lifecycle.rejectShutdown(actor, flags.reject)
+          : lifecycle.requestShutdown(member!),
+    );
+  });
+  const kill = replace('kill', 'kill <name>');
+  kill.action(async (member: string) =>
+    print(await context(kill).lifecycle.kill(member)),
+  );
+  const done = replace('done', 'done').option(
+    '--force',
+    'kill remaining teammates',
+  );
+  done.action(async () => {
+    const { db, lifecycle } = context(done);
+    const force = done.opts<{ force?: boolean }>().force;
+    if (
+      !force &&
+      db.tasks().some((t) => ['planning', 'in_progress'].includes(t.status))
+    )
+      throw new Error('Tasks are still in progress');
+    const members = Object.entries(db.config().details ?? {})
+      .filter(([, m]) => !m.ended)
+      .map(([name]) => name);
+    for (const member of members) {
+      if (force) await lifecycle.kill(member);
+      else lifecycle.requestShutdown(member);
+    }
+    print({
+      members,
+      state: force ? 'killed' : 'shutdown-requested',
+      tasks: db.tasks(),
+    });
+  });
+}

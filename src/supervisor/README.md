@@ -15,9 +15,10 @@ sequence. Reports include owned tasks and the last direct message, or recent
 pane output. Idle teammates with no waiting mail or active task claim the first
 unassigned, unblocked task, unless `auto_claim` is false in team config.
 
-M2 lifecycle support is not yet on main. Members must already be registered and
-running under their team member names in herdr. No real-agent integration test
-has been run; contract tests use Codex fixtures and a fake herdr subprocess.
+Lifecycle reconciliation confirms exits and releases active tasks. Registered
+pane IDs guard against unrelated agents with the same name. No real-agent
+integration test has been run; contract tests use Codex fixtures and a fake
+herdr subprocess.
 
 Delivery is at least once: a crash after herdr accepts a prompt but before the
 cursor is saved can repeat it. Individual records are replaced atomically;

@@ -42,10 +42,15 @@ export function installCoreCommands(
   );
   create.action((name: string) => {
     const { home, identity } = context(create);
+    const db = new Store(home, name);
+    db.create(
+      create.opts<{ lead?: string }>().lead ?? identity.agent ?? 'lead',
+    );
     print(
-      new Store(home, name).create(
-        create.opts<{ lead?: string }>().lead ?? identity.agent ?? 'lead',
-      ),
+      db.updateTeam((team) => {
+        if (env.HERDR_PANE_ID) team.lead_pane_id = env.HERDR_PANE_ID;
+        if (env.HERDR_WORKSPACE_ID) team.workspace_id = env.HERDR_WORKSPACE_ID;
+      }),
     );
   });
   const list = replace(team, 'list', 'list');

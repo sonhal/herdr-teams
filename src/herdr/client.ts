@@ -123,6 +123,43 @@ export class HerdrClient {
     return response.result as T;
   }
 
+  async command(
+    argv: string[],
+    type?: string,
+  ): Promise<Record<string, unknown>> {
+    const response = parse(await this.invoke(argv));
+    if (
+      !record(response) ||
+      typeof response.id !== 'string' ||
+      !record(response.result) ||
+      typeof response.result.type !== 'string' ||
+      (type && response.result.type !== type)
+    )
+      throw new HerdrProtocolError('Invalid herdr response');
+    return response.result;
+  }
+  async createLocation(
+    kind: 'tab' | 'workspace',
+    label: string,
+    cwd: string,
+    env: Record<string, string>,
+    workspace?: string,
+  ): Promise<import('./types.js').PaneInfo> {
+    const argv = [kind, 'create', '--label', label, '--cwd', cwd, '--no-focus'];
+    if (kind === 'tab' && workspace) argv.push('--workspace', workspace);
+    for (const [key, value] of Object.entries(env))
+      argv.push('--env', `${key}=${value}`);
+    const result = await this.json<{
+      root_pane: import('./types.js').PaneInfo;
+    }>(argv, `${kind}_created`, (r) => pane(r.root_pane));
+    return result.root_pane;
+  }
+  async paneClose(id: string): Promise<void> {
+    await this.command(['pane', 'close', id]);
+  }
+  async sendKeys(target: string, ...keys: string[]): Promise<void> {
+    await this.command(['agent', 'send-keys', target, ...keys]);
+  }
   paneSplit(options: PaneSplitOptions): Promise<PaneSplitResult> {
     const argv = ['pane', 'split'];
     if (options.pane !== undefined) argv.push('--pane', options.pane);

@@ -1,4 +1,5 @@
 import { Command, CommanderError } from 'commander';
+import { installLifecycleCommands } from './lifecycle.js';
 import { installCoreCommands } from './core.js';
 import { Store } from '../core/store.js';
 import { HerdrClient } from '../herdr/index.js';
@@ -117,11 +118,11 @@ export function createCli(options: CliOptions): Command {
   leaf(program, 'board', '12', 'M8');
   leaf(program, 'supervise', '11.5', 'M4');
   leaf(program, 'install-shim', '16', 'M2');
-  // TODO PLAN §7.3, §16 (M3): reconcile/deliver events; M0 hooks log and exit 0.
   const hooks = program.command('_hook');
   for (const name of ['startup', 'event']) hooks.command(name).action(() => {});
   group('_action', ['start-team', 'open-board'], '16', 'M2, M8');
   installCoreCommands(program, env, stdout);
+  installLifecycleCommands(program, env, stdout);
   return program;
 }
 
@@ -144,9 +145,19 @@ export async function runCliAsync(
   argv: string[],
   options: CliOptions,
 ): Promise<number> {
-  const code = runCli(argv, options);
+  const code = 0;
+  try {
+    await createCli(options).parseAsync(argv.length ? argv : ['--help'], {
+      from: 'user',
+    });
+  } catch (error) {
+    if (error instanceof CommanderError) return error.exitCode === 0 ? 0 : 2;
+    (options.stderr ?? ((text: string) => process.stderr.write(text)))(
+      `error: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return 1;
+  }
   if (
-    code !== 0 ||
     argv.some((arg) => ['--help', '-h', '--version', '-V'].includes(arg)) ||
     !argv.length
   )
