@@ -263,6 +263,10 @@ another directory. The launcher asks herdr for the installed plugin on each
 run, so it keeps working after `herdr plugin update`. It replaces only its own
 earlier launcher or link, never another file.
 
+[`skills/herdr-teams/SKILL.md`](skills/herdr-teams/SKILL.md) teaches agents the
+CLI, agent definitions and team templates. Copy or link its directory into
+your agent's skills directory, such as `.claude/skills/`.
+
 Linux and macOS are the supported runtime platforms. Windows CI checks build
 and CLI help only; Windows panes, signals and Unix sockets are not supported.
 Codex launch flags and fake-herdr contracts are tested. Claude and pi mappings
