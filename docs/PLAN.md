@@ -101,6 +101,7 @@ herdr **tabs** or **workspaces**.
 | D4 | Agents use the team through a **`herdr-teams` CLI** (works from any agent's shell), taught by an injected instruction block/skill. An **MCP server** wrapping the same core comes later for typed tools. | (assumed) |
 | D5 | **TypeScript on Node ≥ 20**: same ecosystem as pi-teams, Node is near-universal, and the manifest `[[build]]` runs `npm ci && npm run build`. | (assumed) |
 | D6 | Config in `.herdr/` (project) and `~/.config/herdr-teams/` (global). Agent definitions are also **read** from `.pi/agents/` and `.claude/agents/` for compatibility. | (assumed) |
+| D9 | **Launch mechanism A:** teammates start in a normal shell pane through `herdr agent start`. That keeps your shell environment and works for every agent kind. The argv plugin pane (pi-herdr-subagents) was considered and rejected. | **confirmed** |
 | D7 | **Light enforcement.** Plan mode is a prompt convention plus a team setting, not a sandbox. Determinism goes only where it's cheap and clearly useful: task locking, quality-gate exit codes, and never typing into a `blocked` agent. | **confirmed** |
 | D8 | **Live supervision** is a core feature: herdr state, stall advisories, interrupt with context kept, steering and urgent messages (§10). | **confirmed** |
 
@@ -249,25 +250,16 @@ split|tab|workspace] --prompt "..."` runs these steps:
      workspace, and its root pane is used (§7).
    - `--placement tab|workspace` is what pi-teams called "separate OS
      windows".
-3. Launch the agent. There are two mechanisms, to be chosen in the M2 spike:
-   - **A. `agent start` (preferred).** Run `herdr pane split ... --env
-     HERDR_TEAMS_*=... --no-focus`, then `herdr agent start <name> --kind
-     <kind> --pane <id> -- <adapter args>`. herdr waits until the shell owns
-     the foreground, launches the canonical binary, and returns only once the
-     agent is detected and ready. It works for every kind. If the agent exits,
-     the pane falls back to its shell, which keeps your shell env.
-   - **B. argv plugin pane** (pi-herdr-subagents). Run `herdr plugin pane open
-     --plugin herdr-teams --entrypoint member --env
-     HERDR_TEAMS_LAUNCH=<script>`. A dispatcher `exec`s a generated launch
-     script, which records the exit code in a sidecar and can't race shell
-     init. The cost: no rc/direnv env unless the script loads it, and the
-     pane closes when the agent exits. Then run `herdr agent rename` to name
-     it.
-   - A **launch failure** (for example a bad `--model`, or exiting within the
-     start-up window) is reported to the lead with the last ~40 lines of the
-     pane. The pane is kept open for post-mortem.
-4. Wait for the agent to be ready. A uses `agent start`'s own wait; B uses
-   `agent wait --until idle`.
+3. Create the pane: `herdr pane split ... --env HERDR_TEAMS_*=... --no-focus`
+   (or reuse a worktree workspace's root pane). It starts your normal
+   interactive shell, so rc files, direnv, PATH and API keys are all present.
+4. Launch the agent with **`herdr agent start <name> --kind <kind> --pane <id>
+   -- <adapter args>`** (D9). herdr waits for the shell prompt, launches the
+   canonical binary, and returns once the agent is detected and ready. A
+   **launch failure** (an `agent_not_ready` or timeout error, or the agent
+   exiting within the start-up window, e.g. a bad `--model`) is reported to
+   the lead with the last ~40 lines of the pane. The pane stays at its shell
+   for post-mortem.
 5. `herdr pane report-metadata` with the display name `alice · reviewer`, a
    title and tokens (`task`, `team`).
 6. Send the **bootstrap prompt** with `agent prompt`. It contains the team
@@ -522,12 +514,12 @@ reliable than any heuristic of our own.
   | `shut-down` | shutdown handshake accepted, then the agent exited |
   | `closed-by-user` | the pane or agent was closed with no handshake, after a human focused it |
   | `failed-to-launch` | exited within the start-up window; report includes the pane tail and launch argv |
-  | `crashed` | exited or vanished later; report includes the exit code (sidecar, mechanism B), the pane tail and the session ref (`agent_session`) for resume |
+  | `crashed` | exited or vanished later; report includes the pane tail and the session ref (`agent_session`) for resume (no exit code; see §14) |
   | `killed` | `herdr-teams kill` |
 
   A member that **exits** is never shown as `stalled`. Exit detection comes
-  from events (`pane.exited`, `pane.closed`, or the agent disappearing from a
-  live shell pane under mechanism A), not from a quiet screen.
+  from events (the agent disappearing from its shell pane, `pane.exited`,
+  `pane.closed`), not from a quiet screen.
 
 ### 10.2 Stall detection (advisory)
 
@@ -689,11 +681,6 @@ title = "Team supervisor"
 placement = "split"
 command = ["node", "dist/bin/herdr-teams.js", "supervise"]
 
-[[panes]]
-id = "member"                       # launch mechanism B (§5), if chosen
-title = "Teammate"
-placement = "split"
-command = ["bash", "-c", "exec bash \"$HERDR_PLUGIN_ROOT/bin/dispatch.sh\""]
 ```
 
 The `herdr-teams` CLI also has to be on the agents' `PATH`. The spawn env
@@ -746,10 +733,10 @@ prepends `$HERDR_PLUGIN_ROOT/bin`, so a teammate can always call it, and
    taken from env.
 6. **Nested teams:** can teammates spawn helpers? Not in v1; Claude doesn't
    allow it either. A teammate can still use its CLI's own subagents.
-7. **Launch mechanism A vs B** (§5): `agent start` covers every kind and
-   keeps the shell env; the argv pane can't race and gives exit codes. Spike
-   both in M2 with a slow direnv shell and a bad `--model`.
-8. **Agent exit under mechanism A:** the pane survives (it drops back to the
+7. **Launch robustness** (D9): test `agent start` in M2 against a slow shell
+   (a `sleep 3` in rc), direnv, and a bad `--model`. Make sure failures are
+   reported, not silent.
+8. **Detecting agent exit:** the pane survives (it drops back to the
    shell), so `pane.exited` doesn't fire. Detect the exit from the agent
    disappearing (`pane.agent_status_changed`, or `agent get` failing), and
    check that herdr emits a usable event for it.
