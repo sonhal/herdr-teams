@@ -52,16 +52,7 @@ describe('CLI skeleton', () => {
     ['plan', 'submit', '1', '--file', 'plan.md'],
     ['plan', 'approve', '1'],
     ['plan', 'reject', '1'],
-    ...[
-      'create',
-      'request',
-      'approve',
-      'status',
-      'diff',
-      'merge',
-      'remove',
-    ].map((name) => ['worktree', name]),
-    ...['status', 'cleanup', 'log', 'board'].map((name) => [name]),
+    ...['status', 'log', 'board'].map((name) => [name]),
     ['_action', 'start-team'],
     ['_action', 'open-board'],
   ])('exposes a side-effect-free placeholder for %j', (...argv) => {

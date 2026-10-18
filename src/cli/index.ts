@@ -1,4 +1,5 @@
 import { Command, CommanderError } from 'commander';
+import { installWorktreeCommands } from './worktrees.js';
 import { installSupervisionCommands } from './supervision.js';
 import { ensureSupervisor } from '../supervisor/runtime.js';
 import { applyEvent } from '../supervisor/events.js';
@@ -127,6 +128,7 @@ export function createCli(options: CliOptions): Command {
   installCoreCommands(program, env, stdout);
   installLifecycleCommands(program, env, stdout);
   installSupervisionCommands(program, env, stdout);
+  installWorktreeCommands(program, env, stdout);
   return program;
 }
 
