@@ -80,6 +80,16 @@ describe(`team lifecycle on herdr ${HERDR_VERSION}`, () => {
     const { agents } = await herdr.client.agentList();
     const bob = agents.find((agent) => agent.pane_id === member.pane_id);
     expect(bob).toMatchObject({ agent: 'codex' });
+    // Lookups use the session-unique agent name; the pane label stays the
+    // member name. herdr v0.9.5 `pane get` returns the label as display_agent.
+    expect(bob?.name).toMatch(/^demo-bob-[0-9a-f]{4}$/);
+    const labelled = JSON.parse(
+      execFileSync(herdr.env.HERDR_BIN_PATH!, ['pane', 'get', bobPane], {
+        env: herdr.env,
+        encoding: 'utf8',
+      }),
+    ).result.pane;
+    expect(labelled).toMatchObject({ display_agent: 'bob' });
 
     const output = await herdr.client.paneRead(member.pane_id, {
       source: 'recent-unwrapped',

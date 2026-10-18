@@ -145,7 +145,9 @@ herdr-teams ships two templates. `dev` has a developer (plans
 before coding), a reviewer and a tester; `research` has two researchers who
 write `research/<task>.md` and a synthesizer who merges them into
 `research/report.md`. `team templates` lists every template and where it comes
-from.
+from. An instance is named after its template plus the start of its ID, such
+as `dev-3f2a`, unless `--name` sets one; teammates' pane labels are their member
+names.
 
 ```sh
 herdr-teams team templates

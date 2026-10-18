@@ -118,6 +118,62 @@ it('keeps the runtime name separate from the template name', async () => {
   }
 });
 
+async function startSample(home: string, argv: string[]) {
+  mkdirSync(join(home, '.herdr'), { recursive: true });
+  writeFileSync(join(home, '.herdr', 'teams.yaml'), 'sample:\n  members: []\n');
+  vi.spyOn(process, 'cwd').mockReturnValue(home);
+  const fake = await fakeHerdr([
+    jsonReply({ type: 'agent_list', agents: [] }),
+    jsonReply({ type: 'agent_list', agents: [] }),
+  ]);
+  let stdout = '',
+    stderr = '';
+  try {
+    const code = await runCliAsync(argv, {
+      version: 'test',
+      env: { ...fake.env, HERDR_TEAMS_HOME: home },
+      stdout: (s) => {
+        stdout += s;
+      },
+      stderr: (s) => {
+        stderr += s;
+      },
+    });
+    return { code, stdout, stderr };
+  } finally {
+    await fake.cleanup();
+  }
+}
+
+it('names each template instance after the template plus its ID prefix', async () => {
+  const home = setup().home;
+  const first = await startSample(home, ['--json', 'team', 'start', 'sample']);
+  const second = await startSample(home, ['--json', 'team', 'start', 'sample']);
+  expect(first.code).toBe(0);
+  expect(second.code).toBe(0);
+  const a = JSON.parse(first.stdout) as { id: string; name: string };
+  const b = JSON.parse(second.stdout) as { id: string; name: string };
+  expect(a.name).toBe(`sample-${a.id.slice(0, 4)}`);
+  expect(b.name).toBe(`sample-${b.id.slice(0, 4)}`);
+  expect(a.name).not.toBe(b.name);
+  const listed = await startSample(home, ['--team', a.name, 'task', 'list']);
+  expect(listed).toMatchObject({ code: 0, stderr: '' });
+});
+
+it('rejects --team on team start instead of using it as the name', async () => {
+  const db = setup();
+  const result = await startSample(db.home, [
+    '--team',
+    'custom',
+    'team',
+    'start',
+    'sample',
+  ]);
+  expect(result.code).not.toBe(0);
+  expect(result.stderr).toContain('name it with --name');
+  expect(Store.teams(db.home).map((t) => t.name)).toEqual(['dev']);
+});
+
 it('launches and prompts distinct agents for same-name instances in one session', async () => {
   // herdr v0.9.5 requires session-wide unique names of at most 32 characters.
   const a = setup();
