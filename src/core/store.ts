@@ -41,7 +41,7 @@ export interface Team {
     kind?: string;
     model?: string;
     thinking?: string;
-    worktree?: 'shared' | 'dedicated' | 'auto';
+    worktree?: 'shared' | 'dedicated';
     auto_claim?: boolean;
     plan_mode?: boolean;
     plan_approval?: 'lead' | 'none';
@@ -110,7 +110,7 @@ export interface Member {
   shutdown_accepted?: boolean;
   shutdown_exit_sent?: boolean;
   launch_args?: string[];
-  worktree_mode?: 'shared' | 'dedicated' | 'auto';
+  worktree_mode?: 'shared' | 'dedicated';
   worktree?: Worktree;
   launch_pid?: number;
   started_at?: number;
@@ -138,6 +138,8 @@ export interface Task {
   blocks: string[];
   result: string | null;
   reopens: number;
+  /** The task whose hook failure created this follow-up. */
+  followup_of?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -160,6 +162,29 @@ export function clip(text: string, max = MAX_MESSAGE_BYTES): string {
   const note = `\n… [${bytes.length - max} bytes omitted]`;
   // Decoding a cut multi-byte character yields U+FFFD, never invalid UTF-8.
   return bytes.subarray(0, max - Buffer.byteLength(note) - 3).toString() + note;
+}
+
+/**
+ * Hooks receive the task as JSON in one environment variable, which Linux caps
+ * at 128 KiB. Limits apply to the JSON encoding, where a control character
+ * takes six bytes; together they leave room for the task's other fields.
+ */
+const TASK_TEXT_LIMITS = {
+  subject: 1024,
+  description: MAX_MESSAGE_BYTES,
+  result: MAX_MESSAGE_BYTES,
+  gate: 4096,
+  feedback: 16 * 1024,
+};
+export function checkTaskText(
+  field: keyof typeof TASK_TEXT_LIMITS,
+  value: string | null | undefined,
+): void {
+  const limit = TASK_TEXT_LIMITS[field];
+  if (value != null && Buffer.byteLength(JSON.stringify(value)) > limit)
+    throw new Error(
+      `Task ${field} exceeds ${limit} bytes as JSON; put long text in a file and pass its path`,
+    );
 }
 
 function name(value: string): string {
@@ -388,13 +413,27 @@ export class Store {
   config(): Team {
     return read<Team>(join(this.root, 'config.json'));
   }
-  authorize(agent: string | undefined, privileged = false): string {
+  /**
+   * herdr sets HERDR_PANE_ID in every pane, so a command from a running
+   * teammate's pane acts for that teammate whatever HERDR_TEAMS_AGENT says.
+   */
+  authorize(
+    agent: string | undefined,
+    privileged = false,
+    pane?: string,
+  ): string {
     const config = this.config();
-    if (agent && !config.members.includes(agent))
-      throw new Error(`Unknown team member: ${agent}`);
-    if (privileged && agent && agent !== config.lead)
+    const actor =
+      (pane &&
+        Object.entries(config.details ?? {}).find(
+          ([, member]) => !member.ended && member.pane_id === pane,
+        )?.[0]) ||
+      agent;
+    if (actor && !config.members.includes(actor))
+      throw new Error(`Unknown team member: ${actor}`);
+    if (privileged && actor && actor !== config.lead)
       throw new Error('Only the lead or user may perform this action');
-    return agent ?? config.lead;
+    return actor ?? config.lead;
   }
   static teams(home: string): Team[] {
     const root = join(home, 'teams');
@@ -436,9 +475,17 @@ export class Store {
   add(
     subject: string,
     description = '',
-    options: { gate?: string; planMode?: boolean; worktree?: boolean } = {},
+    options: {
+      gate?: string;
+      planMode?: boolean;
+      worktree?: boolean;
+      followupOf?: string;
+    } = {},
   ): Task {
     if (!subject.trim()) throw new Error('Task subject is required');
+    checkTaskText('subject', subject);
+    checkTaskText('description', description);
+    checkTaskText('gate', options.gate);
     return this.lock(() => {
       const counter = join(this.root, 'tasks', '.highwatermark');
       const id = existsSync(counter) ? read<number>(counter) : 1;
@@ -450,6 +497,7 @@ export class Store {
         ...(options.gate ? { gate: options.gate } : {}),
         ...(options.planMode ? { plan_mode: true } : {}),
         ...(options.worktree ? { worktree: { required: true } } : {}),
+        ...(options.followupOf ? { followup_of: options.followupOf } : {}),
         status: 'pending',
         owner: null,
         blockedBy: [],
@@ -495,9 +543,12 @@ export class Store {
       } else if (action === 'complete') {
         if (task.status !== 'in_progress' || task.owner !== actor)
           throw new Error('Only the owner may complete an in-progress task');
+        checkTaskText('result', value);
         task.status = 'completed';
         task.result = value ?? null;
       } else {
+        checkTaskText('subject', value);
+        checkTaskText('description', description);
         if (value !== undefined) {
           if (!value.trim()) throw new Error('Task subject is required');
           task.subject = value;

@@ -3,6 +3,7 @@ import { Store } from '../core/store.js';
 import { Worktrees, git, worktreeStatus } from '../core/worktrees.js';
 import { HerdrClient } from '../herdr/index.js';
 import { readSelectedIdentity } from './identity.js';
+import { each } from '../runtime/each.js';
 export function installWorktreeCommands(
   program: Command,
   env: NodeJS.ProcessEnv,
@@ -21,7 +22,7 @@ export function installWorktreeCommands(
     const db = new Store(identity.home, identity.teamId);
     return {
       db,
-      actor: db.authorize(identity.agent, privileged),
+      actor: db.authorize(identity.agent, privileged, identity.paneId),
       trees: new Worktrees(db, new HerdrClient({ env })),
     };
   }
@@ -100,12 +101,17 @@ export function installWorktreeCommands(
     const candidates = Object.entries(db.config().details ?? {})
       .filter(([, m]) => m.ended && m.worktree)
       .map(([name]) => name);
-    if (cleanup.opts<{ apply?: boolean }>().apply) {
-      for (const name of candidates) await trees.remove(name);
-    }
-    print({
-      candidates,
-      applied: Boolean(cleanup.opts<{ apply?: boolean }>().apply),
-    });
+    const apply = Boolean(cleanup.opts<{ apply?: boolean }>().apply);
+    // One ineligible worktree must not keep the others.
+    const failure = apply
+      ? await each(
+          candidates.map((name) => [name, name] as [string, string]),
+          async (name) => {
+            await trees.remove(name);
+          },
+        ).catch((error: unknown) => error as Error)
+      : undefined;
+    print({ candidates, applied: apply });
+    if (failure) throw failure;
   });
 }

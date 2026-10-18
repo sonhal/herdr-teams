@@ -1,5 +1,7 @@
 import {
   appendFileSync,
+  chmodSync,
+  existsSync,
   mkdtempSync,
   rmSync,
   mkdirSync,
@@ -708,4 +710,47 @@ it('recovers an abandoned delivery lease and completes the pending pass', async 
   } finally {
     await fake.cleanup();
   }
+});
+
+it('runs teammate_idle hooks without holding delivery for later events', async () => {
+  const db = setup();
+  const home = mkdtempSync(join(tmpdir(), 'idle-hook-'));
+  homes.push(home);
+  db.updateTeam((team) => {
+    team.repository_dir = home;
+  });
+  const marker = join(home, 'started');
+  const hooks = join(home, '.herdr', 'teams', 'hooks');
+  mkdirSync(hooks, { recursive: true });
+  writeFileSync(
+    join(hooks, 'teammate_idle'),
+    `#!/bin/sh\ntouch "${marker}"\nsleep 2\n`,
+  );
+  chmodSync(join(hooks, 'teammate_idle'), 0o755);
+  const finished = { ...idle, completion_seq: 1 };
+  const client = new HerdrClient({
+    runner: async (_binary, argv) => {
+      if (argv[0] === 'pane')
+        return { stdout: 'output', stderr: '', exitCode: 0 };
+      const result =
+        argv[1] === 'list'
+          ? { type: 'agent_list', agents: [finished] }
+          : argv[1] === 'get'
+            ? { type: 'agent_info', agent: finished }
+            : { type: 'agent_prompted', agent: finished };
+      return {
+        stdout: JSON.stringify({ id: 'test', result }),
+        stderr: '',
+        exitCode: 0,
+      };
+    },
+  });
+  const first = reconcile(db, client);
+  while (!existsSync(marker))
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  const started = Date.now();
+  await reconcile(db, client);
+  expect(Date.now() - started).toBeLessThan(1500);
+  await first;
+  expect(db.inbox('lead').filter((m) => m.kind === 'report')).toHaveLength(1);
 });

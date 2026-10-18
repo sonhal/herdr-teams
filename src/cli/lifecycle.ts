@@ -32,7 +32,7 @@ export function installLifecycleCommands(
     if (!identity.home || !identity.teamId)
       throw new Error('Set HERDR_TEAMS_HOME and select a team');
     const db = new Store(identity.home, identity.teamId);
-    const actor = db.authorize(identity.agent, privileged);
+    const actor = db.authorize(identity.agent, privileged, identity.paneId);
     return {
       db,
       actor,
@@ -92,7 +92,7 @@ export function installLifecycleCommands(
     .option('--model <model>', 'model name')
     .option('--thinking <level>', 'thinking effort')
     .option('--placement <placement>', 'split, tab or workspace', 'split')
-    .option('--worktree <mode>', 'shared, dedicated or auto')
+    .option('--worktree <mode>', 'shared or dedicated')
     .option('--plan-mode', 'request a plan before coding')
     .requiredOption('--prompt <text>', 'opening instructions');
   spawn.action(async (member: string) => {

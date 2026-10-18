@@ -1,6 +1,6 @@
 import { Hooks } from './hooks.js';
 import { planApproval } from './plans.js';
-import { Store, clip, type Task } from './store.js';
+import { Store, checkTaskText, clip, type Task } from './store.js';
 export class Tasks {
   constructor(
     readonly db: Store,
@@ -16,6 +16,11 @@ export class Tasks {
       worktree?: boolean;
     } = {},
   ) {
+    // Checked before the hook, which receives them in its environment.
+    if (!subject.trim()) throw new Error('Task subject is required');
+    checkTaskText('subject', subject);
+    checkTaskText('description', options.description);
+    checkTaskText('gate', options.gate);
     const hooks = new Hooks(this.db, this.env);
     const outcome = await hooks.run('task_created', actor, undefined, {
       subject,
@@ -30,6 +35,7 @@ export class Tasks {
       const task = this.db.task(id);
       if (task.owner !== actor || task.status !== 'in_progress')
         throw new Error('Only the owner may complete an in-progress task');
+      checkTaskText('result', result);
       if (
         (task.plan_mode || this.db.config().details?.[actor]?.plan_mode) &&
         planApproval(this.db, task) === 'lead' &&

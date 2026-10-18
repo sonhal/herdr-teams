@@ -27,7 +27,7 @@ export function installControlCommands(
     const db = new Store(identity.home, identity.teamId);
     return {
       db,
-      actor: db.authorize(identity.agent, privileged),
+      actor: db.authorize(identity.agent, privileged, identity.paneId),
       client: new HerdrClient({ env }),
     };
   }

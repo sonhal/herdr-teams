@@ -203,3 +203,28 @@ it('does not reopen a concurrently released task after a failing gate', async ()
     clearTimeout(timer);
   }
 });
+
+it('creates one follow-up per task however often its gate fails', async () => {
+  const { db, tasks } = setup();
+  db.updateTeam((team) => {
+    team.hooks = { failure_action: 'followup' };
+  });
+  const task = await tasks.add('lead', 'fails', { gate: 'exit 1' });
+  db.change(task.id, 'claim', 'alice');
+  for (let attempt = 0; attempt < 3; attempt++)
+    await expect(tasks.complete(task.id, 'alice')).rejects.toThrow();
+  expect(db.tasks().filter((t) => t.followup_of === task.id)).toHaveLength(1);
+});
+it('runs a gate for a task with the largest text it accepts', async () => {
+  const { db, tasks } = setup();
+  // Control characters grow sixfold as JSON, as in the hook environment.
+  const text = '\u0001'.repeat(5000);
+  const task = await tasks.add('lead', 'large', {
+    description: text,
+    gate: 'exit 0',
+  });
+  db.change(task.id, 'claim', 'alice');
+  expect((await tasks.complete(task.id, 'alice', text)).status).toBe(
+    'completed',
+  );
+});

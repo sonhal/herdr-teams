@@ -208,13 +208,13 @@ it('records a kill when the pane has already disappeared', async () => {
   expect(db.task(task.id).owner).toBeNull();
 });
 
-it('done accepts shutdown for idle members and closes their panes', async () => {
+it('done asks idle members to exit and closes their panes once exit is observed', async () => {
   const db = setup();
   const fake = await fakeHerdr([
     jsonReply({ type: 'agent_info', agent }),
     jsonReply({ type: 'agent_prompted', agent }),
-    jsonReply({ type: 'ok' }),
     jsonReply({ type: 'agent_list', agents: [] }),
+    jsonReply({ type: 'ok' }),
   ]);
   try {
     const code = await runCliAsync(['done'], {
@@ -230,6 +230,12 @@ it('done accepts shutdown for idle members and closes their panes', async () => 
     expect(code).toBe(0);
     expect(db.config().details!.alice!.ended).toBe('shut-down');
     expect(db.config().details!.alice!.shutdown_accepted).toBe(true);
+    expect((await fake.calls()).map((c) => c.slice(0, 2))).toEqual([
+      ['agent', 'get'],
+      ['agent', 'prompt'],
+      ['agent', 'list'],
+      ['pane', 'close'],
+    ]);
   } finally {
     await fake.cleanup();
   }

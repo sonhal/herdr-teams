@@ -24,7 +24,7 @@ export interface Definition {
   thinking?: string;
   plan_mode?: boolean;
   plan_approval?: 'lead' | 'none';
-  worktree?: 'shared' | 'dedicated' | 'auto';
+  worktree?: 'shared' | 'dedicated';
   auto_claim?: boolean;
   instructions?: string;
 }
@@ -147,11 +147,8 @@ export class Config {
     for (const field of ['plan_mode', 'auto_claim'] as const)
       if (value[field] !== undefined && typeof value[field] !== 'boolean')
         throw new Error(`Invalid ${field}`);
-    if (
-      value.worktree &&
-      !['shared', 'dedicated', 'auto'].includes(value.worktree)
-    )
-      throw new Error('Invalid worktree mode');
+    if (value.worktree && !['shared', 'dedicated'].includes(value.worktree))
+      throw new Error('Invalid worktree mode; use shared or dedicated');
     if (value.plan_approval && !['lead', 'none'].includes(value.plan_approval))
       throw new Error('Invalid plan approval');
     // Without a kind, model and thinking are checked when the kind is known at spawn.

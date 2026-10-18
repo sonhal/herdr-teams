@@ -164,3 +164,15 @@ it('rejects a member whose herdr name would be too long before creating a team',
     await fake.cleanup();
   }
 });
+
+it('built-in roles use only worktree modes that exist', () => {
+  const { config } = setup();
+  for (const role of ['developer', 'tester', 'researcher', 'synthesizer']) {
+    const definition = config.definition(role);
+    expect(definition.worktree ?? 'shared').toBe('shared');
+    expect(definition.instructions).not.toContain('your worktree');
+  }
+  expect(() =>
+    config.validateDefinition({ worktree: 'auto' as 'shared' }),
+  ).toThrow('worktree');
+});

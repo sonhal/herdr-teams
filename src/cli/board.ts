@@ -29,7 +29,7 @@ export function installBoardCommands(
     if (!identity.home || !identity.teamId)
       throw new Error('Set HERDR_TEAMS_HOME and select a team');
     const db = new Store(identity.home, identity.teamId);
-    db.authorize(identity.agent);
+    db.authorize(identity.agent, false, identity.paneId);
     return db;
   }
   const status = replace(program, 'status', 'status [member]');
@@ -119,7 +119,7 @@ export function installBoardCommands(
     .action((id: string, _flags: unknown, command: Command) => {
       const db = context(command);
       const identity = readSelectedIdentity(env);
-      db.authorize(identity.agent, true);
+      db.authorize(identity.agent, true, identity.paneId);
       const task = db.editTask(id, (t) => {
         if (!['completed', 'failed', 'deleted'].includes(t.status))
           throw new Error('Only a terminal task may be reopened');
@@ -148,7 +148,11 @@ export function installBoardCommands(
       identity.teamId ??
       (candidates.length === 1 ? candidates[0]!.id : undefined);
     if (!id) throw new Error('Select a team with --team');
-    new Store(identity.home, id).authorize(identity.agent);
+    new Store(identity.home, id).authorize(
+      identity.agent,
+      false,
+      identity.paneId,
+    );
     await new HerdrClient({ env }).command(
       [
         'plugin',

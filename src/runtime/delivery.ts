@@ -10,6 +10,7 @@ import {
   clip,
   MAX_MESSAGE_BYTES,
   type Message,
+  type Task,
   type Team,
 } from '../core/store.js';
 import { HerdrClient, type AgentInfo } from '../herdr/index.js';
@@ -70,12 +71,13 @@ export async function reconcile(
     if (Date.now() >= deadline) throw new Error('Delivery is busy; retry');
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+  const failures: unknown[] = [];
+  const idleHooks: [string, Task | undefined][] = [];
   try {
     await writeFile(join(lease, 'pid'), String(process.pid));
     let team = db.config();
     const state = db.deliveryState();
     const agents = (await client.agentList()).agents;
-    const failures: unknown[] = [];
     await syncMembers(db, client, agents).catch((error: unknown) =>
       failures.push(error),
     );
@@ -141,14 +143,12 @@ export async function reconcile(
       if (seq <= (state.reports[member] ?? 0)) return;
       state.idle_hooks ??= {};
       if (seq > (state.idle_hooks[member] ?? 0)) {
-        const hooks = new Hooks(db, env);
-        const task = db
-          .tasks()
-          .find((t) => t.owner === member && t.status === 'in_progress');
-        const outcome = await hooks.run('teammate_idle', member, task, {
+        idleHooks.push([
           member,
-        });
-        if (outcome.code !== 0) hooks.failure(member, task, outcome);
+          db
+            .tasks()
+            .find((t) => t.owner === member && t.status === 'in_progress'),
+        ]);
         state.idle_hooks[member] = seq;
         db.saveDeliveryState(state);
       }
@@ -288,11 +288,17 @@ export async function reconcile(
       state.acknowledged[member] = [...acknowledged];
       db.saveDeliveryState(state);
     }).catch((error: unknown) => failures.push(error));
-    if (failures.length)
-      throw new Error(failures.map((e) => (e as Error).message).join('; '));
   } finally {
     await rm(lease, { recursive: true, force: true });
   }
+  // Hooks may run for minutes; under the lease they would stall every delivery.
+  const hooks = new Hooks(db, env);
+  await each(idleHooks, async (member, task) => {
+    const outcome = await hooks.run('teammate_idle', member, task, { member });
+    if (outcome.code !== 0) hooks.failure(member, task, outcome);
+  }).catch((error: unknown) => failures.push(error));
+  if (failures.length)
+    throw new Error(failures.map((e) => (e as Error).message).join('; '));
 }
 
 async function acquireDeliveryLease(

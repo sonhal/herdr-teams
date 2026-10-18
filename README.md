@@ -99,7 +99,7 @@ sessions leave it alone. Members receive team identity and the CLI on PATH. Spli
 four teammates beside the lead in its tab, then in team tabs of four;
 `--placement tab|workspace` gives a member its own
 location. All panes open without taking focus. `--model` and `--thinking`
-override team defaults. Use `--worktree dedicated` for an isolated checkout, or `auto` to start shared.
+override team defaults. Teammates share the lead's checkout; `--worktree dedicated` gives one an isolated checkout.
 In herdr, a new teammate's agent name includes a four-character suffix derived
 from its instance ID and member name. The readable `<team>-<member>` prefix is
 trimmed to 27 characters so the full name fits in 32. The untrimmed combination
@@ -108,7 +108,7 @@ the stored herdr agent name is handled automatically.
 
 A shutdown request waits for the member to accept or reject it. Accepted requests
 exit the CLI when idle and close the pane only after exit is observed. `done`
-requests shutdown for all teammates, refusing active tasks; `done --force` and
+accepts shutdown for all teammates the same way, refusing active tasks; `done --force` and
 `kill <name>` close panes and return active tasks to pending. Launch failures
 retain the pane and send the lead arguments and recent output.
 
@@ -179,7 +179,7 @@ first argument and `PI_TEAM` set.
 
 ## Templates and agent definitions
 
-herdr-teams ships two templates. `dev` has a developer (own worktree, plans
+herdr-teams ships two templates. `dev` has a developer (plans
 before coding), a reviewer and a tester; `research` has two researchers who
 write `research/<task>.md` and a synthesizer who merges them into
 `research/report.md`. `team templates` lists every template and where it comes
