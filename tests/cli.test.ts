@@ -120,6 +120,15 @@ describe('identity (PLAN §4.2–4.3)', () => {
       paneId: undefined,
     });
   });
+  it("defaults to herdr's plugin state directory inside a herdr pane", () => {
+    // herdr 143bf5f: src/plugin_paths.rs plugin_state_dir, src/config/io.rs state_dir.
+    expect(readIdentity({ HERDR_ENV: '1', HOME: '/h' }).home).toBe(
+      '/h/.local/state/herdr/plugins/herdr-teams',
+    );
+    expect(
+      readIdentity({ HERDR_ENV: '1', HOME: '/h', XDG_STATE_HOME: '/s' }).home,
+    ).toBe('/s/herdr/plugins/herdr-teams');
+  });
   it('does not invent an identity outside a herdr pane', () => {
     expect(readIdentity({})).toEqual({
       home: undefined,

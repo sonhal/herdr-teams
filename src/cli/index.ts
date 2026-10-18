@@ -51,7 +51,7 @@ export function createCli(options: CliOptions): Command {
     .action(async () => {
       await serveMcp(process.stdin, stdout, options.version, env);
     });
-  installCoreCommands(program, env, stdout);
+  installCoreCommands(program, env, stdout, stderr);
   installLifecycleCommands(program, env, stdout);
   installSupervisionCommands(program, env, stdout);
   installWorktreeCommands(program, env, stdout);
@@ -73,6 +73,19 @@ export function runCli(argv: string[], options: CliOptions): number {
     );
     return 1;
   }
+}
+
+/** The team a command ran against, including one it just created. */
+function targetTeam(program: Command, env: NodeJS.ProcessEnv) {
+  const team = program.commands.find((c) => c.name() === 'team')!;
+  const flags = program.opts<{ team?: string }>();
+  if (program.args[0] === 'team' && program.args[1] === 'create')
+    return team.commands.find((c) => c.name() === 'create')!.args[0];
+  if (program.args[0] === 'team' && program.args[1] === 'start') {
+    const start = team.commands.find((c) => c.name() === 'start')!;
+    return start.opts<{ name?: string }>().name ?? flags.team ?? start.args[0];
+  }
+  return readIdentity(env, flags.team).team;
 }
 
 /** Production entrypoint: keep command errors distinct from deferred delivery. */
@@ -104,30 +117,47 @@ export async function runCliAsync(
   const env = options.env ?? process.env;
   const identity = readIdentity(env);
   if (!identity.home) return code;
-  // Reconcile all teams: startup and fallback events may have no team identity.
-  try {
-    const client = new HerdrClient({ env });
-    for (const team of Store.teams(identity.home)) {
-      const db = new Store(identity.home, team.name);
-      if (command === '_hook' && env.HERDR_PLUGIN_EVENT_JSON)
-        applyEvent(db, JSON.parse(env.HERDR_PLUGIN_EVENT_JSON) as unknown);
-      if (identity.agent && team.details?.[identity.agent])
-        db.patchMember(identity.agent, { last_activity: Date.now() });
-      await reconcile(db, client, env);
-      if (command === '_hook' && program.args[1] === 'event')
-        await syncSidebar(db, client);
+  const hook = command === '_hook' ? program.args[1] : undefined;
+  const opening =
+    hook === 'startup' ||
+    (command === 'team' && ['create', 'start'].includes(program.args[1] ?? ''));
+  // Hooks carry no team identity; they act for every team of this session.
+  // A command acts only for the team it ran against.
+  const teams = hook
+    ? Store.teams(identity.home)
+        .filter(
+          (team) =>
+            team.herdr_socket !== undefined &&
+            team.herdr_socket === env.HERDR_SOCKET_PATH,
+        )
+        .map((team) => team.name)
+    : [targetTeam(program, env)].filter((team) => team !== undefined);
+  const client = new HerdrClient({ env });
+  let failed = false;
+  for (const name of teams) {
+    try {
+      const db = new Store(identity.home, name);
+      const team = db.config();
       if (
-        (command === '_hook' && program.args[1] === 'startup') ||
-        (command === 'team' &&
-          ['create', 'start'].includes(program.args[1] ?? ''))
+        team.herdr_socket !== undefined &&
+        team.herdr_socket !== env.HERDR_SOCKET_PATH
       )
-        await ensureSupervisor(db, client);
+        continue;
+      if (hook && env.HERDR_PLUGIN_EVENT_JSON)
+        applyEvent(db, JSON.parse(env.HERDR_PLUGIN_EVENT_JSON) as unknown);
+      const caller = identity.agent && team.details?.[identity.agent];
+      if (caller && caller.pane_id === identity.paneId)
+        db.patchMember(identity.agent!, { last_activity: Date.now() });
+      await reconcile(db, client, env);
+      if (hook === 'event') await syncSidebar(db, client);
+      if (opening) await ensureSupervisor(db, client);
+    } catch (error) {
+      failed = true;
+      (options.stderr ?? ((text: string) => process.stderr.write(text)))(
+        `delivery deferred for ${name}: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
     }
-  } catch (error) {
-    (options.stderr ?? ((text: string) => process.stderr.write(text)))(
-      `delivery deferred: ${error instanceof Error ? error.message : String(error)}\n`,
-    );
-    if (command === '_hook') return 1;
   }
+  if (failed && hook) return 1;
   return code;
 }

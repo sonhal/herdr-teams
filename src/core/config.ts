@@ -277,6 +277,7 @@ export class Config {
     if (template.members.some((m) => m.name === lead))
       throw new Error('Lead and teammate names must differ');
     db.create(lead);
+    db.bindSession(this.env.HERDR_SOCKET_PATH);
     db.updateTeam((team) => {
       team.repository_dir = this.cwd;
       team.defaults = { ...template.lead, ...template.defaults };

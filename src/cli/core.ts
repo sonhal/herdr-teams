@@ -3,12 +3,13 @@ import { Command } from 'commander';
 import { HerdrClient } from '../herdr/index.js';
 import { Worktrees, worktreeStatus } from '../core/worktrees.js';
 import { Store } from '../core/store.js';
-import { readIdentity } from './identity.js';
+import { pluginStateDir, readIdentity } from './identity.js';
 
 export function installCoreCommands(
   program: Command,
   env: NodeJS.ProcessEnv,
   output: (text: string) => void,
+  warn: (text: string) => void = () => {},
 ): void {
   function replace(parent: Command, old: string, usage: string): Command {
     const previous = parent.commands.find((c) => c.name() === old);
@@ -45,10 +46,16 @@ export function installCoreCommands(
   );
   create.action((name: string) => {
     const { home, identity } = context(create);
+    const hooks = pluginStateDir(env);
+    if (hooks && hooks !== home)
+      warn(
+        `warning: herdr's startup and event hooks read ${hooks}, not ${home}; this team relies on its supervisor\n`,
+      );
     const db = new Store(home, name);
     db.create(
       create.opts<{ lead?: string }>().lead ?? identity.agent ?? 'lead',
     );
+    db.bindSession(env.HERDR_SOCKET_PATH);
     print(
       db.updateTeam((team) => {
         if (env.HERDR_PANE_ID) team.lead_pane_id = env.HERDR_PANE_ID;
@@ -149,13 +156,13 @@ export function installCoreCommands(
   msg.description('Queue messages in member inboxes');
   const send = replace(msg, 'send', 'send <recipient> <body>').option(
     '--urgent',
-    'queue an urgent message',
+    'interrupt a working recipient (lead or user only)',
   );
   send.action((recipient: string, body: string) => {
-    const { db, actor } = store(send);
-    print(
-      db.send(actor, recipient, body, send.opts<{ urgent?: boolean }>().urgent),
-    );
+    const urgent = send.opts<{ urgent?: boolean }>().urgent;
+    // Urgent mail can press Esc in the recipient's pane, like interrupt.
+    const { db, actor } = store(send, urgent);
+    print(db.send(actor, recipient, body, urgent));
   });
   const inbox = replace(program, 'inbox', 'inbox');
   inbox.action(() => {

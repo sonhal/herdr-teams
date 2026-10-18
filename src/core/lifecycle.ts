@@ -34,6 +34,7 @@ export class Lifecycle {
     );
   }
   private async spawnMember(member: string, options: SpawnOptions) {
+    this.db.bindSession(this.env.HERDR_SOCKET_PATH);
     const team = this.db.config();
     options = {
       ...options,

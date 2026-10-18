@@ -138,3 +138,19 @@ describe('M1 store', () => {
     expect(db.task(task.id).status).toBe('in_progress');
   });
 });
+
+it('refuses to bind a team to a second herdr session', () => {
+  const home = mkdtempSync(join(tmpdir(), 'store-'));
+  try {
+    const db = new Store(home, 'demo');
+    db.create('lead');
+    db.bindSession('session-a.sock');
+    db.bindSession('session-a.sock');
+    expect(() => db.bindSession('session-b.sock')).toThrow(
+      /another herdr session/,
+    );
+    expect(db.config().herdr_socket).toBe('session-a.sock');
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});

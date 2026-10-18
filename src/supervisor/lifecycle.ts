@@ -1,4 +1,5 @@
 import { adapter } from '../adapters/index.js';
+import { each } from './each.js';
 import { Store } from '../core/store.js';
 import { HerdrClient, HerdrApiError, type AgentInfo } from '../herdr/index.js';
 
@@ -8,26 +9,26 @@ export async function syncMembers(
   agents: AgentInfo[],
 ): Promise<void> {
   const team = db.config();
-  for (const [name, member] of Object.entries(team.details ?? {})) {
-    if (member.ended) continue;
+  await each(Object.entries(team.details ?? {}), async (name, member) => {
+    if (member.ended) return;
     if (member.state === 'starting') {
       if (
         !member.launch_pid ||
         Date.now() - (member.started_at ?? Date.now()) < 30000
       )
-        continue;
+        return;
       try {
         process.kill(member.launch_pid, 0);
-        continue;
+        return;
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') continue;
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') return;
       }
       db.endMember(
         name,
         'failed-to-launch',
         'Launch process exited before recording readiness',
       );
-      continue;
+      return;
     }
     const live = agents.find(
       (a) => a.name === name && a.pane_id === member.pane_id,
@@ -63,7 +64,7 @@ export async function syncMembers(
             throw error;
         }
       }
-      continue;
+      return;
     }
     if (live.agent_status !== member.state) {
       db.patchMember(name, {
@@ -82,5 +83,5 @@ export async function syncMembers(
       await client.agentPrompt(name, adapter(member.kind).exit);
       db.patchMember(name, { shutdown_exit_sent: true });
     }
-  }
+  });
 }

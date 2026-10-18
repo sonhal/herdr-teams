@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { runCliAsync } from '../src/cli/index.js';
-import { Store } from '../src/core/store.js';
+import { MAX_MESSAGE_BYTES, Store } from '../src/core/store.js';
+import { Hooks } from '../src/core/hooks.js';
 import { HerdrClient } from '../src/herdr/index.js';
 import { reconcile } from '../src/supervisor/delivery.js';
 import { agent } from './helpers/fixtures.js';
@@ -173,13 +174,18 @@ it('does not recursively quote generated reports on later turns', async () => {
 
 it('startup hooks flush mail without a team identity', async () => {
   const db = setup();
+  db.bindSession('session-a.sock');
   db.send('lead', 'alice', 'restart mail');
   const fake = await fakeHerdr([list(), get, prompted]);
   try {
     expect(
       await runCliAsync(['_hook', 'startup'], {
         version: '0.1.0',
-        env: { ...fake.env, HERDR_TEAMS_HOME: db.home },
+        env: {
+          ...fake.env,
+          HERDR_TEAMS_HOME: db.home,
+          HERDR_SOCKET_PATH: 'session-a.sock',
+        },
       }),
     ).toBe(0);
     expect(db.deliveryState().cursors.alice).toBeDefined();
@@ -220,4 +226,278 @@ it('does not prompt a replacement agent that took over the pane', async () => {
   } finally {
     await fake.cleanup();
   }
+});
+
+function team(home: string, name: string, socket: string) {
+  const db = new Store(home, name);
+  db.create('lead');
+  db.updateTeam((config) => {
+    config.supervisor = { mode: 'off' };
+    config.herdr_socket = socket;
+    config.lead_pane_id = idle.pane_id;
+  });
+  return db;
+}
+
+it('reconciles only the selected team after a command', async () => {
+  const alpha = setup();
+  alpha.bindSession('session-a.sock');
+  const beta = team(alpha.home, 'beta', 'session-a.sock');
+  beta.reserveMember('bob', {
+    kind: 'codex',
+    pane_id: 'w1:p9',
+    state: 'working',
+  });
+  const task = beta.add('beta work');
+  beta.change(task.id, 'claim', 'bob');
+  beta.send('bob', 'lead', 'beta lead mail');
+  const fake = await fakeHerdr([list('working')]);
+  try {
+    expect(
+      await runCliAsync(['--team', 'demo', 'task', 'list'], {
+        version: '0.1.0',
+        env: {
+          ...fake.env,
+          HERDR_TEAMS_HOME: alpha.home,
+          HERDR_SOCKET_PATH: 'session-a.sock',
+        },
+        stdout: () => {},
+      }),
+    ).toBe(0);
+    expect(await fake.calls()).toEqual([['agent', 'list']]);
+    expect(beta.config().details!.bob!.ended).toBeUndefined();
+    expect(beta.task(task.id).status).toBe('in_progress');
+    expect(beta.deliveryState().cursors).toEqual({});
+  } finally {
+    await fake.cleanup();
+  }
+});
+
+it('startup hooks skip teams that belong to another herdr session', async () => {
+  const db = setup();
+  db.bindSession('session-a.sock');
+  const other = team(db.home, 'beta', 'session-b.sock');
+  other.send('lead', 'lead', 'other session mail');
+  db.send('lead', 'alice', 'restart mail');
+  const fake = await fakeHerdr([list(), get, prompted]);
+  try {
+    expect(
+      await runCliAsync(['_hook', 'startup'], {
+        version: '0.1.0',
+        env: {
+          ...fake.env,
+          HERDR_TEAMS_HOME: db.home,
+          HERDR_SOCKET_PATH: 'session-a.sock',
+        },
+      }),
+    ).toBe(0);
+    expect(db.deliveryState().cursors.alice).toBeDefined();
+    expect(other.deliveryState().cursors).toEqual({});
+    expect(await fake.calls()).toHaveLength(3);
+  } finally {
+    await fake.cleanup();
+  }
+});
+
+it('does not deliver lead mail to another named agent in the lead pane', async () => {
+  const db = team(
+    mkdtempSync(join(tmpdir(), 'delivery-')),
+    'demo',
+    'session-a.sock',
+  );
+  homes.push(db.home);
+  db.addMember('alice');
+  db.send('alice', 'lead', 'for the lead only');
+  const fake = await fakeHerdr([
+    jsonReply({ type: 'agent_list', agents: [{ ...idle, name: 'stranger' }] }),
+  ]);
+  try {
+    await reconcile(db, new HerdrClient({ env: fake.env }));
+    expect((await fake.calls()).some((c) => c[1] === 'prompt')).toBe(false);
+    expect(db.deliveryState().cursors).toEqual({});
+  } finally {
+    await fake.cleanup();
+  }
+});
+
+it('rejects message bodies that cannot be passed as one argument', () => {
+  const db = setup();
+  expect(() => db.send('lead', 'alice', 'x'.repeat(200 * 1024))).toThrow(
+    /bytes/,
+  );
+  expect(db.inbox('alice')).toEqual([]);
+});
+
+it('bounds each prompt and keeps delivering to other members', async () => {
+  const db = setup();
+  db.addMember('bob');
+  // Mail written before the size limit existed.
+  appendFileSync(
+    join(db.root, 'inboxes', 'alice.jsonl'),
+    JSON.stringify({
+      id: 'legacy',
+      from: 'lead',
+      to: 'alice',
+      body: 'x'.repeat(200 * 1024),
+      urgent: false,
+      createdAt: new Date().toISOString(),
+    }) + '\n',
+  );
+  db.send('lead', 'bob', 'hello bob');
+  const bob = { ...idle, name: 'bob', pane_id: 'w1:p3' };
+  const fake = await fakeHerdr([
+    jsonReply({ type: 'agent_list', agents: [idle, bob] }),
+    get,
+    { exitCode: 3, stderr: 'alice failed' },
+    jsonReply({ type: 'agent_info', agent: bob }),
+    jsonReply({ type: 'agent_prompted', agent: bob }),
+  ]);
+  try {
+    await expect(
+      reconcile(db, new HerdrClient({ env: fake.env })),
+    ).rejects.toThrow(/alice/);
+    const prompts = (await fake.calls()).filter((c) => c[1] === 'prompt');
+    expect(prompts.map((c) => c[2])).toEqual(['w1:p2', 'w1:p3']);
+    for (const prompt of prompts)
+      expect(Buffer.byteLength(prompt[3]!)).toBeLessThan(128 * 1024);
+    expect(db.deliveryState().cursors.bob).toBeDefined();
+    expect(db.deliveryState().cursors.alice).toBeUndefined();
+  } finally {
+    await fake.cleanup();
+  }
+});
+
+it('splits a large backlog into prompts that fit one argument', async () => {
+  const db = setup();
+  for (let i = 0; i < 6; i++)
+    db.send('lead', 'alice', `${i}`.repeat(30 * 1024));
+  const fake = await fakeHerdr([list(), get, prompted, list(), get, prompted]);
+  try {
+    const client = new HerdrClient({ env: fake.env });
+    await reconcile(db, client);
+    await reconcile(db, client);
+    const prompts = (await fake.calls()).filter((c) => c[1] === 'prompt');
+    expect(prompts).toHaveLength(2);
+    for (const prompt of prompts)
+      expect(Buffer.byteLength(prompt[3]!)).toBeLessThan(128 * 1024);
+    expect(db.deliveryState().cursors.alice).toBe(db.inbox('alice').at(-1)!.id);
+  } finally {
+    await fake.cleanup();
+  }
+});
+
+it('presses Esc once per urgent message for a working agent', async () => {
+  const db = setup();
+  db.reserveMember('bob', {
+    kind: 'claude',
+    pane_id: 'w1:p3',
+    state: 'working',
+  });
+  db.send('lead', 'bob', 'stop and listen', true);
+  const bob = {
+    ...idle,
+    name: 'bob',
+    pane_id: 'w1:p3',
+    agent_status: 'working',
+  };
+  const working = jsonReply({ type: 'agent_list', agents: [bob] });
+  const info = jsonReply({ type: 'agent_info', agent: bob });
+  const fake = await fakeHerdr([
+    working,
+    info,
+    jsonReply({ type: 'keys_sent' }),
+    working,
+  ]);
+  try {
+    const client = new HerdrClient({ env: fake.env });
+    await reconcile(db, client);
+    await reconcile(db, client);
+    const keys = (await fake.calls()).filter((c) => c[1] === 'send-keys');
+    expect(keys).toHaveLength(1);
+  } finally {
+    await fake.cleanup();
+  }
+});
+
+it('creates a team from an ordinary herdr pane in the hooks’ state home', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'delivery-'));
+  homes.push(home);
+  const state = join(
+    home,
+    '.local',
+    'state',
+    'herdr',
+    'plugins',
+    'herdr-teams',
+  );
+  const fake = await fakeHerdr([
+    jsonReply({ type: 'agent_list', agents: [] }),
+    jsonReply({
+      type: 'plugin_pane_opened',
+      plugin_pane: { pane_id: 'w1:p5' },
+    }),
+  ]);
+  try {
+    let stderr = '';
+    const env = {
+      HERDR_BIN_PATH: fake.binary,
+      HERDR_ENV: '1',
+      HOME: home,
+      HERDR_SOCKET_PATH: 'session-a.sock',
+      HERDR_PANE_ID: 'w1:p1',
+    };
+    expect(
+      await runCliAsync(['team', 'create', 'demo'], {
+        version: '0.1.0',
+        env,
+        stdout: () => {},
+        stderr: (s) => {
+          stderr += s;
+        },
+      }),
+    ).toBe(0);
+    expect(stderr).toBe('');
+    expect(new Store(state, 'demo').config()).toMatchObject({
+      herdr_socket: 'session-a.sock',
+      lead_pane_id: 'w1:p1',
+      supervisor: { pane_id: 'w1:p5' },
+    });
+    expect((await fake.calls())[1]).toContain(`HERDR_TEAMS_HOME=${state}`);
+  } finally {
+    await fake.cleanup();
+  }
+});
+
+it('warns when a team is created outside the hooks’ state home', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'delivery-'));
+  homes.push(home);
+  let stderr = '';
+  await runCliAsync(['team', 'create', 'demo'], {
+    version: '0.1.0',
+    env: {
+      HERDR_BIN_PATH: '/nonexistent/herdr',
+      HERDR_ENV: '1',
+      HOME: home,
+      HERDR_TEAMS_HOME: join(home, 'elsewhere'),
+    },
+    stdout: () => {},
+    stderr: (s) => {
+      stderr += s;
+    },
+  });
+  expect(stderr).toContain('startup and event hooks read');
+  expect(new Store(join(home, 'elsewhere'), 'demo').config().name).toBe('demo');
+});
+
+it('clips large hook output instead of failing after the hook ran', () => {
+  const db = setup();
+  new Hooks(db, {}).failure('alice', undefined, {
+    code: 1,
+    stderr: 'x'.repeat(200 * 1024),
+  });
+  const advisory = db.inbox('lead').at(-1)!;
+  expect(Buffer.byteLength(advisory.body)).toBeLessThanOrEqual(
+    MAX_MESSAGE_BYTES,
+  );
+  expect(advisory.body).toContain('bytes omitted');
 });

@@ -32,6 +32,8 @@ export interface Team {
   >;
   workspace_id?: string;
   lead_pane_id?: string;
+  /** HERDR_SOCKET_PATH of the herdr session that runs the team. */
+  herdr_socket?: string;
   details?: Record<string, Member>;
   defaults?: {
     kind?: string;
@@ -134,6 +136,18 @@ export interface Message {
   urgent: boolean;
   createdAt: string;
 }
+/** Keeps a batch of wrapped messages below Linux's 128 KiB limit on one argument. */
+export const MAX_MESSAGE_BYTES = 32 * 1024;
+
+/** Shortens generated text, such as hook output, to fit in a message. */
+export function clip(text: string, max = MAX_MESSAGE_BYTES): string {
+  const bytes = Buffer.from(text);
+  if (bytes.length <= max) return text;
+  const note = `\n… [${bytes.length - max} bytes omitted]`;
+  // Decoding a cut multi-byte character yields U+FFFD, never invalid UTF-8.
+  return bytes.subarray(0, max - Buffer.byteLength(note) - 3).toString() + note;
+}
+
 function name(value: string): string {
   if (!/^[a-z][a-z0-9_-]{0,31}$/.test(value))
     throw new Error(`Invalid name: ${value}`);
@@ -288,6 +302,17 @@ export class Store {
       'advisory',
     );
     this.event('member.ended', { member, ended, output });
+  }
+  /** Ties the team to one herdr session; pane IDs mean nothing in another. */
+  bindSession(socket: string | undefined): void {
+    if (!socket) return;
+    this.updateTeam((team) => {
+      if (team.herdr_socket && team.herdr_socket !== socket)
+        throw new Error(
+          `Team ${team.name} belongs to another herdr session (${team.herdr_socket})`,
+        );
+      team.herdr_socket = socket;
+    });
   }
   addMember(member: string): Team {
     name(member);
@@ -497,6 +522,10 @@ export class Store {
     if (!this.config().members.includes(to))
       throw new Error(`Unknown recipient: ${to}`);
     if (!body.trim()) throw new Error('Message body is required');
+    if (Buffer.byteLength(body) > MAX_MESSAGE_BYTES)
+      throw new Error(
+        `Message body exceeds ${MAX_MESSAGE_BYTES} bytes; send a file path instead`,
+      );
     const message = {
       id: randomUUID(),
       from,
@@ -530,12 +559,14 @@ export class Store {
     state.blocked ??= {};
     state.acknowledged ??= {};
     state.idle_hooks ??= {};
+    state.steered ??= {};
     for (const key of [
       'cursors',
       'reports',
       'blocked',
       'acknowledged',
       'idle_hooks',
+      'steered',
     ] as const) {
       const map = state[key];
       if (map) Object.setPrototypeOf(map, null);
@@ -586,6 +617,8 @@ export interface DeliveryState {
   blocked?: Record<string, boolean>;
   acknowledged?: Record<string, string[]>;
   idle_hooks?: Record<string, number>;
+  /** Last urgent message per member for which Esc was pressed. */
+  steered?: Record<string, string>;
   cursors: Record<string, string>;
   reports: Record<string, number>;
 }

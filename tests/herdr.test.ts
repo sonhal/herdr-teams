@@ -22,6 +22,13 @@ async function setup(replies: Reply[]) {
 }
 
 describe('herdr CLI contract', () => {
+  it('refuses an argument Linux would reject with E2BIG', async () => {
+    const { fake, client } = await setup([]);
+    await expect(
+      client.agentPrompt('w1:p2', 'x'.repeat(128 * 1024)),
+    ).rejects.toThrow(/argument/);
+    expect(await fake.calls()).toEqual([]);
+  });
   it('splits without focus and preserves cwd and env values as single arguments', async () => {
     const { fake, client } = await setup([
       jsonReply({ type: 'pane_info', pane }),

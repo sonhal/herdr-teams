@@ -1,6 +1,6 @@
 import { Hooks } from './hooks.js';
 import { planApproval } from './plans.js';
-import { Store, type Task } from './store.js';
+import { Store, clip, type Task } from './store.js';
 export class Tasks {
   constructor(
     readonly db: Store,
@@ -59,7 +59,7 @@ export class Tasks {
           this.db.send(
             this.db.config().lead,
             actor,
-            outcome.stderr || `Gate exited ${outcome.code}`,
+            clip(outcome.stderr || `Gate exited ${outcome.code}`),
           );
           throw new Error('Task changed while the hook was running; retry');
         }

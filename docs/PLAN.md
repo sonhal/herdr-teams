@@ -154,7 +154,10 @@ runs as the user.
 
 ### 4.3 Storage
 
-`HERDR_TEAMS_HOME` defaults to herdr's `$HERDR_PLUGIN_STATE_DIR`.
+`HERDR_TEAMS_HOME` defaults to herdr's `$HERDR_PLUGIN_STATE_DIR`. herdr sets
+that only for plugin processes, so inside an ordinary herdr pane the CLI
+derives the same path. A team records the `HERDR_SOCKET_PATH` of the session
+that created it; hooks and commands from another session leave it alone.
 
 ```
 teams/<team>/
@@ -543,8 +546,9 @@ From gentlest to strongest:
 Otherwise it falls back to interrupt-then-prompt (§13). Nothing is ever typed
 into a `blocked` agent.
 
-**Authority:** any member may send urgent messages. Only the lead or the user
-may interrupt, release or kill another member.
+**Authority:** only the lead or the user may steer, send urgent messages,
+interrupt, release or kill another member; urgent delivery can press Esc in
+the recipient's pane.
 
 ### 11.5 The supervisor
 

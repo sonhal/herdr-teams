@@ -231,3 +231,46 @@ it('subscribes to socket events and resubscribes after events_lost', async () =>
     );
   }
 });
+
+it.each([
+  [['steer', 'alice', 'stop that']],
+  [['msg', 'send', 'alice', 'stop that', '--urgent']],
+])('refuses urgent input from a teammate: %j', async (argv) => {
+  const db = setup();
+  db.addMember('bob');
+  let stderr = '';
+  const code = await runCliAsync(argv, {
+    version: 'test',
+    env: {
+      HERDR_BIN_PATH: '/nonexistent/herdr',
+      HERDR_TEAMS_HOME: db.home,
+      HERDR_TEAMS_TEAM: db.team,
+      HERDR_TEAMS_AGENT: 'bob',
+    },
+    stdout: () => {},
+    stderr: (s) => {
+      stderr += s;
+    },
+  });
+  expect(code).toBe(1);
+  expect(stderr).toContain('Only the lead');
+  expect(db.inbox('alice')).toEqual([]);
+});
+
+it('lets a teammate send ordinary mail', async () => {
+  const db = setup();
+  db.addMember('bob');
+  const code = await runCliAsync(['msg', 'send', 'alice', 'hello'], {
+    version: 'test',
+    env: {
+      HERDR_BIN_PATH: '/nonexistent/herdr',
+      HERDR_TEAMS_HOME: db.home,
+      HERDR_TEAMS_TEAM: db.team,
+      HERDR_TEAMS_AGENT: 'bob',
+    },
+    stdout: () => {},
+    stderr: () => {},
+  });
+  expect(code).toBe(0);
+  expect(db.inbox('alice')).toMatchObject([{ from: 'bob', urgent: false }]);
+});

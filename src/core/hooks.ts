@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { Store, type Task } from './store.js';
+import { Store, clip, type Task } from './store.js';
 
 export interface HookResult {
   code: number;
@@ -137,7 +137,7 @@ export class Hooks {
     return { code: 0, stderr: '' };
   }
   failure(actor: string, task: Task | undefined, result: HookResult): void {
-    const text = result.stderr.trim() || `Hook exited ${result.code}`;
+    const text = clip(result.stderr.trim() || `Hook exited ${result.code}`);
     const team = this.db.config();
     this.db.send(team.lead, actor, text);
     this.db.event('hook.failed', {
@@ -150,7 +150,7 @@ export class Hooks {
     this.db.send(
       actor,
       team.lead,
-      `Hook failure${task ? ` on task #${task.id}` : ''}: ${text}`,
+      clip(`Hook failure${task ? ` on task #${task.id}` : ''}: ${text}`),
       false,
       'advisory',
     );
