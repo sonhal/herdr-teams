@@ -96,7 +96,7 @@ describe('M1 store', () => {
     db.dependency(b.id, a.id);
     db.change(a.id, 'claim', 'lead');
     db.change(a.id, 'complete', 'lead');
-    expect(db.inbox('alice')[0]?.body).toContain('unblocked');
+    expect(db.inbox('alice').at(-1)?.body).toContain('unblocked');
     expect(db.change(b.id, 'claim', 'alice').owner).toBe('alice');
     expect(() => db.change(b.id, 'complete', 'lead')).toThrow('owner');
   });

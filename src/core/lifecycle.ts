@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { adapter } from '../adapters/index.js';
-import { HerdrClient, type PaneInfo } from '../herdr/index.js';
+import { HerdrClient, HerdrApiError, type PaneInfo } from '../herdr/index.js';
 import { Worktrees } from './worktrees.js';
 import { pluginRoot } from './paths.js';
 import { Store } from './store.js';
@@ -117,7 +117,11 @@ export class Lifecycle {
           env,
           team.workspace_id,
         );
-      else if (!team.layout || team.layout.count >= 4) {
+      else if (
+        !team.layout ||
+        team.layout.count === 0 ||
+        team.layout.count >= 4
+      ) {
         const number = (team.layout?.number ?? 0) + 1;
         pane = await this.client.createLocation(
           'tab',
@@ -242,7 +246,15 @@ export class Lifecycle {
       throw new Error('Member is not running');
     if (member === this.db.config().lead)
       throw new Error('Cannot kill the lead');
-    await this.client.paneClose(details.pane_id);
+    try {
+      await this.client.paneClose(details.pane_id);
+    } catch (error) {
+      if (
+        !(error instanceof HerdrApiError) ||
+        !['pane_not_found', 'not_found'].includes(error.code)
+      )
+        throw error;
+    }
     this.db.endMember(member, 'killed');
     return { member, state: 'killed' };
   }

@@ -9,10 +9,13 @@ export function applyEvent(db: Store, event: unknown, now = Date.now()): void {
   if (!data || typeof data !== 'object') return;
   for (const [name, member] of Object.entries(db.config().details ?? {})) {
     if (member.ended) continue;
-    if (kind === 'pane.focused' && data.pane_id === member.pane_id)
+    if (
+      ['pane.focused', 'pane_focused'].includes(String(kind)) &&
+      data.pane_id === member.pane_id
+    )
       db.patchMember(name, { focused_at: now });
     if (
-      kind === 'pane.moved' &&
+      ['pane.moved', 'pane_moved'].includes(String(kind)) &&
       data.previous_pane_id === member.pane_id &&
       data.pane &&
       typeof data.pane === 'object'
