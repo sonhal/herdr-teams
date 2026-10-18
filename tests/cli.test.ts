@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { Store } from '../src/core/store.js';
 import { describe, expect, it } from 'vitest';
 import { createCli, runCli } from '../src/cli/index.js';
-import { readIdentity } from '../src/cli/identity.js';
+import { readIdentity, resolveTeamId } from '../src/cli/identity.js';
 
 function run(argv: string[], env: NodeJS.ProcessEnv = {}) {
   let stdout = '';
@@ -148,5 +148,40 @@ describe('identity (PLAN §4.2–4.3)', () => {
       agent: undefined,
       paneId: undefined,
     });
+  });
+
+  it('resolveTeamId passes a uuid through', () => {
+    const home = mkdtempSync(join(tmpdir(), 'cli-'));
+    try {
+      const id = randomUUID();
+      new Store(home, id).create('lead', 'dev');
+      expect(resolveTeamId(home, id)).toBe(id);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('resolveTeamId resolves a unique display name to its id', () => {
+    const home = mkdtempSync(join(tmpdir(), 'cli-'));
+    try {
+      const id = randomUUID();
+      new Store(home, id).create('lead', 'dev');
+      expect(resolveTeamId(home, 'dev')).toBe(id);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('resolveTeamId errors on an ambiguous display name', () => {
+    const home = mkdtempSync(join(tmpdir(), 'cli-'));
+    try {
+      const a = randomUUID(),
+        b = randomUUID();
+      new Store(home, a).create('lead', 'dev');
+      new Store(home, b).create('lead', 'dev');
+      expect(() => resolveTeamId(home, 'dev')).toThrow(/ambiguous/);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

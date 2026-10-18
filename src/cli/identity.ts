@@ -1,4 +1,8 @@
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { Store } from '../core/store.js';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** PLAN §4.2–4.3: identity only; membership and authority checks arrive in M1–M2. */
 export interface Identity {
@@ -31,4 +35,26 @@ export function readIdentity(env: NodeJS.ProcessEnv, team?: string): Identity {
     agent: env.HERDR_TEAMS_AGENT || undefined,
     paneId: env.HERDR_PANE_ID || undefined,
   };
+}
+
+/**
+ * Resolves a --team / HERDR_TEAMS_TEAM query to a team instance id. A valid
+ * UUID with an existing team dir passes through; any other string is treated
+ * as a display name and resolved via Store.teams, throwing when it is
+ * ambiguous or unknown.
+ */
+export function resolveTeamId(
+  home: string,
+  query: string | undefined,
+): string | undefined {
+  if (query === undefined) return undefined;
+  if (UUID.test(query) && existsSync(join(home, 'teams', query, 'config.json')))
+    return query;
+  const matches = Store.teams(home).filter((t) => t.name === query);
+  if (matches.length === 1) return matches[0]!.id;
+  if (matches.length > 1)
+    throw new Error(
+      `Team name "${query}" is ambiguous: ${matches.map((t) => t.id).join(', ')}`,
+    );
+  throw new Error(`Unknown team "${query}"`);
 }
