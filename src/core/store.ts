@@ -607,6 +607,7 @@ export class Store {
     state.steered ??= {};
     state.incarnations ??= {};
     state.report_messages ??= {};
+    state.report_boards ??= {};
     state.interrupts ??= {};
     for (const key of [
       'cursors',
@@ -617,6 +618,7 @@ export class Store {
       'steered',
       'incarnations',
       'report_messages',
+      'report_boards',
       'interrupts',
     ] as const) {
       const map = state[key];
@@ -668,6 +670,8 @@ export class Store {
 export interface DeliveryState {
   incarnations?: Record<string, string>;
   report_messages?: Record<string, string>;
+  /** Owned tasks and worktree status as of the last turn report. */
+  report_boards?: Record<string, string>;
   interrupts?: Record<string, boolean>;
   blocked?: Record<string, boolean>;
   acknowledged?: Record<string, string[]>;
