@@ -36,7 +36,7 @@ npm run typecheck
 ./bin/herdr-teams --team demo --json task list
 ```
 
-With herdr ≥ 0.9 installed, build first, then run:
+With herdr ≥ 0.9.5 installed, build first, then run:
 
 ```sh
 herdr plugin link .
@@ -218,3 +218,42 @@ Actions use the CLI's usual permission and blocked-agent checks.
 
 The supervisor updates member labels and workspace progress tokens. Closing the
 supervisor leaves event hooks active and shows it as offline on the board.
+
+## MCP
+
+`herdr-teams mcp` serves JSON-RPC MCP tools over stdio. Configure your MCP
+client to run the built shim with the same `HERDR_TEAMS_HOME`,
+`HERDR_TEAMS_TEAM`, `HERDR_TEAMS_AGENT` and herdr environment as the CLI.
+Tools use CLI argument arrays, preserving member identity and authorization.
+Long-running terminal commands are available through the CLI only.
+
+```json
+{
+  "mcpServers": {
+    "herdr-teams": {
+      "command": "herdr-teams",
+      "args": ["mcp"],
+      "env": {
+        "HERDR_TEAMS_HOME": "<state-directory>",
+        "HERDR_TEAMS_TEAM": "<team>",
+        "HERDR_TEAMS_AGENT": "<member>"
+      }
+    }
+  }
+}
+```
+
+## Installation and support
+
+Once the feature PRs are merged, install with
+`herdr plugin install sonhal/herdr-teams`. The manifest runs `npm ci` and builds
+TypeScript. Development checkouts use `herdr plugin link .` after building.
+`herdr-teams install-shim --directory <directory-on-PATH>` exposes the command
+to the lead. Existing files are never overwritten by the shim installer.
+
+Linux and macOS are the supported runtime platforms. Windows CI checks build
+and CLI help only; Windows panes, signals and Unix sockets are not supported.
+Codex launch flags and fake-herdr contracts are tested. Claude and pi mappings
+remain untested here. OpenCode supports its documented model flag and exit
+command; explicit thinking effort is refused because no TUI launch mapping is
+verified. Live herdr latency and interactive board UX still need manual checks.

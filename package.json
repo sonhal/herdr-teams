@@ -1,7 +1,7 @@
 {
   "name": "herdr-teams",
   "version": "0.1.0",
-  "description": "A herdr plugin for running teams of coding agents (M0 skeleton).",
+  "description": "A herdr plugin for persistent teams of coding agents.",
   "private": true,
   "type": "module",
   "engines": {

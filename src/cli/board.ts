@@ -17,7 +17,8 @@ export function installBoardCommands(
 ) {
   function replace(parent: Command, name: string, usage: string) {
     const old = parent.commands.find((c) => c.name() === name)!;
-    (parent.commands as Command[]).splice(parent.commands.indexOf(old), 1);
+    if (old)
+      (parent.commands as Command[]).splice(parent.commands.indexOf(old), 1);
     return parent.command(usage);
   }
   function context(command: Command) {
