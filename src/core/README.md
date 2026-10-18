@@ -1,4 +1,4 @@
-# Core store (M1)
+# Core state
 
 `Store` persists teams, tasks, dependencies, inboxes and events under
 `$HERDR_TEAMS_HOME/teams/<team>` (falling back to `$HERDR_PLUGIN_STATE_DIR`
@@ -9,9 +9,10 @@ recovered only when their owner process is gone. Contenders time out after
 10 seconds; retry an operation after an interrupted writer.
 
 Inboxes and events use single append writes. Reading an inbox never marks it
-delivered. Urgent mail is recorded; delivery, cursors and reconciliation arrive
-in M3. Member registration is a core API for M2 spawning; M1 creates just the
-lead. Plan mode and quality gates arrive in M6.
+delivered. Delivery cursors and urgent acknowledgements live separately.
+Lifecycle, worktree, plan and hook services use the same store. Async operation
+leases serialize long-running actions without holding the store lock over I/O.
+Completion rechecks its task snapshot after gates and hooks finish.
 
 Each JSON record is atomic, but a process crash between related dependency
 writes or between a record and its event can leave partial bookkeeping.

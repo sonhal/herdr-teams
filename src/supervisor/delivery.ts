@@ -1,5 +1,6 @@
 import { mkdir, rm, readFile, writeFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { Hooks } from '../core/hooks.js';
 import { Worktrees, worktreeStatus } from '../core/worktrees.js';
 import { syncMembers } from './lifecycle.js';
 import { Store, type Message } from '../core/store.js';
@@ -10,7 +11,11 @@ function wrap(team: string, message: Message): string {
 }
 
 /** Hooks and reconciliation share a lease; never hold the store lock across I/O. */
-export async function reconcile(db: Store, client: HerdrClient): Promise<void> {
+export async function reconcile(
+  db: Store,
+  client: HerdrClient,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
   const lease = join(db.root, 'locks', 'delivery');
   try {
     await mkdir(lease);
@@ -92,6 +97,20 @@ export async function reconcile(db: Store, client: HerdrClient): Promise<void> {
         continue;
       const seq = agent.completion_seq ?? 0;
       if (seq <= (state.reports[member] ?? 0)) continue;
+      state.idle_hooks ??= {};
+      if (seq > (state.idle_hooks[member] ?? 0)) {
+        const hooks = new Hooks(db, env);
+        const task = db
+          .tasks()
+          .find((t) => t.owner === member && t.status === 'in_progress');
+        const outcome = await hooks.run('teammate_idle', member, task, {
+          member,
+        });
+        if (outcome.code !== 0) hooks.failure(member, task, outcome);
+        state.idle_hooks[member] = seq;
+        db.saveDeliveryState(state);
+      }
+
       const tasks = db.tasks().filter((t) => t.owner === member);
       const last = db
         .inbox(team.lead)
@@ -148,7 +167,7 @@ export async function reconcile(db: Store, client: HerdrClient): Promise<void> {
             db.send(
               team.lead,
               member,
-              `You claimed task #${task.id}: ${task.subject}\n${task.description}\n${db.task(task.id).worktree?.binding ? `Work in ${JSON.stringify(db.task(task.id).worktree!.binding!.path)}` : ''}`,
+              `You claimed task #${task.id}: ${task.subject}\n${task.description}\n${task.plan_mode || team.details?.[member]?.plan_mode ? 'Before editing, submit a plan: herdr-teams plan submit ' + task.id + ' --file plan.md. Follow the team plan approval policy.\n' : ''}${db.task(task.id).worktree?.binding ? `Work in ${JSON.stringify(db.task(task.id).worktree!.binding!.path)}` : ''}`,
             ),
           ];
         }

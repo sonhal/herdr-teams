@@ -1,4 +1,5 @@
 import { Command, CommanderError } from 'commander';
+import { installPlanCommands } from './plans.js';
 import { installWorktreeCommands } from './worktrees.js';
 import { installSupervisionCommands } from './supervision.js';
 import { ensureSupervisor } from '../supervisor/runtime.js';
@@ -129,6 +130,7 @@ export function createCli(options: CliOptions): Command {
   installLifecycleCommands(program, env, stdout);
   installSupervisionCommands(program, env, stdout);
   installWorktreeCommands(program, env, stdout);
+  installPlanCommands(program, env, stdout);
   return program;
 }
 
@@ -180,7 +182,7 @@ export async function runCliAsync(
         applyEvent(db, JSON.parse(env.HERDR_PLUGIN_EVENT_JSON) as unknown);
       if (identity.agent && team.details?.[identity.agent])
         db.patchMember(identity.agent, { last_activity: Date.now() });
-      await reconcile(db, client);
+      await reconcile(db, client, env);
       if (
         (argv[0] === '_hook' && argv[1] === 'startup') ||
         (argv[0] === 'team' && argv[1] === 'create')
