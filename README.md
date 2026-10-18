@@ -24,7 +24,8 @@ See [docs/PLAN.md](docs/PLAN.md) for the design.
 Requires Node.js ≥ 20 and npm. M1 implements persistent teams, tasks with
 dependencies and exclusive claiming, inboxes, and an event log. M2 adds spawning, labels, bootstrap, shutdown and kill. M3 adds idle inbox
 delivery, event hooks, turn reports, auto-claim and restart reconciliation.
-The board and long-running supervisor remain placeholders.
+M4 adds the supervisor, progress advisories and correction commands. The board
+remains a placeholder.
 
 ```sh
 npm ci
@@ -67,8 +68,8 @@ restricted to the lead or a user outside a member pane. `task update` accepts
 `team list`, `task list`, `task show`, `broadcast` and `report` are also available.
 Core commands currently print JSON, including when `--json` is omitted.
 Messages are persisted and delivered in batches when recipients are idle.
-Blocked recipients retain their mail. `--urgent` mail stays queued until idle
-while working-agent steering awaits M4. Set `auto_claim: false` in team config
+Blocked recipients retain their mail. `--urgent` mail steers a working Codex
+agent; other kinds use interrupt-then-idle delivery. Set `auto_claim: false` in team config
 to disable automatic claiming. Generated state belongs outside the repository
 or in an ignored directory.
 
@@ -92,3 +93,22 @@ exit the CLI when idle and close the pane only after exit is observed. `done`
 requests shutdown for all teammates, refusing active tasks; `done --force` and
 `kill <name>` close panes and return active tasks to pending. Launch failures
 retain the pane and send the lead arguments and recent output.
+
+## Supervision
+
+The supervisor opens after team creation and reopens on herdr startup. Set
+`supervisor.mode` to `off` to use event hooks alone, or `tab` for a separate
+system tab. Defaults are a 30-second tick, a 10-minute no-progress advisory,
+a 2-minute needs-input advisory and a 5-minute unknown-state advisory. Set a
+threshold to zero to disable it. Advisories inform the lead; they do not kill
+or restart teammates. Interactive or recently focused members stay quiet.
+
+```sh
+herdr-teams --team demo peek alice --lines 40
+herdr-teams --team demo steer alice "Focus on the failing test"
+herdr-teams --team demo interrupt alice --then "Summarize your current work"
+herdr-teams --team demo task release 1 --reason "Reassigning the task"
+```
+
+Only the lead or user may interrupt, release or kill. Blocked agents must have
+their permission or question prompt answered before those input operations.

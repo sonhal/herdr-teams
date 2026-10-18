@@ -9,7 +9,26 @@ export async function syncMembers(
 ): Promise<void> {
   const team = db.config();
   for (const [name, member] of Object.entries(team.details ?? {})) {
-    if (member.ended || member.state === 'starting') continue;
+    if (member.ended) continue;
+    if (member.state === 'starting') {
+      if (
+        !member.launch_pid ||
+        Date.now() - (member.started_at ?? Date.now()) < 30000
+      )
+        continue;
+      try {
+        process.kill(member.launch_pid, 0);
+        continue;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') continue;
+      }
+      db.endMember(
+        name,
+        'failed-to-launch',
+        'Launch process exited before recording readiness',
+      );
+      continue;
+    }
     const live = agents.find(
       (a) => a.name === name && a.pane_id === member.pane_id,
     );
@@ -26,7 +45,11 @@ export async function syncMembers(
         }
       db.endMember(
         name,
-        member.shutdown_accepted ? 'shut-down' : 'crashed',
+        member.shutdown_accepted
+          ? 'shut-down'
+          : member.focused_at && Date.now() - member.focused_at < 300000
+            ? 'closed-by-user'
+            : 'crashed',
         output,
       );
       if (member.shutdown_accepted && member.pane_id) {
@@ -43,7 +66,12 @@ export async function syncMembers(
       continue;
     }
     if (live.agent_status !== member.state) {
-      db.patchMember(name, { state: live.agent_status });
+      db.patchMember(name, {
+        state: live.agent_status,
+        state_since: Date.now(),
+        progress_at: Date.now(),
+        ...(live.agent_status === 'working' ? { interrupted: false } : {}),
+      });
       db.event('member.state', { member: name, state: live.agent_status });
     }
     if (

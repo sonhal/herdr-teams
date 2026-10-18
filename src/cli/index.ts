@@ -1,4 +1,7 @@
 import { Command, CommanderError } from 'commander';
+import { installSupervisionCommands } from './supervision.js';
+import { ensureSupervisor } from '../supervisor/runtime.js';
+import { applyEvent } from '../supervisor/events.js';
 import { installLifecycleCommands } from './lifecycle.js';
 import { installCoreCommands } from './core.js';
 import { Store } from '../core/store.js';
@@ -123,6 +126,7 @@ export function createCli(options: CliOptions): Command {
   group('_action', ['start-team', 'open-board'], '16', 'M2, M8');
   installCoreCommands(program, env, stdout);
   installLifecycleCommands(program, env, stdout);
+  installSupervisionCommands(program, env, stdout);
   return program;
 }
 
@@ -168,8 +172,19 @@ export async function runCliAsync(
   // Reconcile all teams: startup and fallback events may have no team identity.
   try {
     const client = new HerdrClient({ env });
-    for (const team of Store.teams(identity.home))
-      await reconcile(new Store(identity.home, team.name), client);
+    for (const team of Store.teams(identity.home)) {
+      const db = new Store(identity.home, team.name);
+      if (argv[0] === '_hook' && env.HERDR_PLUGIN_EVENT_JSON)
+        applyEvent(db, JSON.parse(env.HERDR_PLUGIN_EVENT_JSON) as unknown);
+      if (identity.agent && team.details?.[identity.agent])
+        db.patchMember(identity.agent, { last_activity: Date.now() });
+      await reconcile(db, client);
+      if (
+        (argv[0] === '_hook' && argv[1] === 'startup') ||
+        (argv[0] === 'team' && argv[1] === 'create')
+      )
+        await ensureSupervisor(db, client);
+    }
   } catch (error) {
     (options.stderr ?? ((text: string) => process.stderr.write(text)))(
       `delivery deferred: ${error instanceof Error ? error.message : String(error)}\n`,
