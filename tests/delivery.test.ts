@@ -510,3 +510,22 @@ it('clips large hook output instead of failing after the hook ran', () => {
   );
   expect(advisory.body).toContain('bytes omitted');
 });
+
+it('labels system notices as herdr-teams notices without a reply hint', async () => {
+  const db = setup();
+  db.send('alice', 'lead', 'alice: crashed\nlast output', false, 'advisory');
+  db.updateTeam((team) => {
+    team.lead_pane_id = idle.pane_id;
+  });
+  const fake = await fakeHerdr([list(), get, prompted]);
+  try {
+    await reconcile(db, new HerdrClient({ env: fake.env }));
+    const prompt = (await fake.calls()).find((c) => c[1] === 'prompt')![3]!;
+    expect(prompt).toContain('[herdr-teams] notice about alice');
+    expect(prompt).toContain('alice: crashed');
+    expect(prompt).not.toContain('teammate, not the user');
+    expect(prompt).not.toContain('Reply:');
+  } finally {
+    await fake.cleanup();
+  }
+});
