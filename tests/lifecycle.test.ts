@@ -198,7 +198,7 @@ it('reports a crash with its screen and the session the member last ran', async 
     await fake.cleanup();
   }
 });
-it('shutdown accepts on the member behalf and closes an idle member', async () => {
+it('shutdown asks an idle member to exit and closes its pane only after exit is observed', async () => {
   const db = setup();
   db.reserveMember('alice', {
     kind: 'codex',
@@ -212,22 +212,20 @@ it('shutdown accepts on the member behalf and closes an idle member', async () =
     jsonReply({ type: 'ok' }),
   ]);
   try {
-    const lifecycle = new Lifecycle(
-      db,
-      new HerdrClient({ env: fake.env }),
-      fake.env,
-    );
+    const client = new HerdrClient({ env: fake.env });
+    const lifecycle = new Lifecycle(db, client, fake.env);
     expect(await lifecycle.shutdown('alice')).toEqual({
       member: 'alice',
-      state: 'shut-down',
+      state: 'pending',
     });
-    const details = db.config().details!.alice!;
-    expect(details.ended).toBe('shut-down');
-    expect(details.shutdown_accepted).toBe(true);
+    expect(db.config().details!.alice!).toMatchObject({
+      shutdown_accepted: true,
+      shutdown_exit_sent: true,
+    });
+    expect(db.config().details!.alice!.ended).toBeUndefined();
     expect((await fake.calls()).map((c) => c.slice(0, 2))).toEqual([
       ['agent', 'get'],
       ['agent', 'prompt'],
-      ['pane', 'close'],
     ]);
     expect((await fake.calls())[1]).toEqual([
       'agent',
@@ -235,6 +233,12 @@ it('shutdown accepts on the member behalf and closes an idle member', async () =
       'alice',
       '/quit',
     ]);
+    // A reconcile that still sees the agent must not send a second exit.
+    await syncMembers(db, client, [{ ...agent, name: 'alice' }]);
+    expect(await fake.calls()).toHaveLength(2);
+    await syncMembers(db, client, []);
+    expect((await fake.calls()).at(-1)!.slice(0, 2)).toEqual(['pane', 'close']);
+    expect(db.config().details!.alice!.ended).toBe('shut-down');
   } finally {
     await fake.cleanup();
   }

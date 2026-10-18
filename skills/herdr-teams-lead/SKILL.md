@@ -62,7 +62,7 @@ herdr-teams broadcast "Freeze package.json"
 - `--agent <definition>`: load a definition from `.herdr/agents/`
 - `--placement split|tab|workspace` (default `split`: the first four
   teammates beside the lead in its tab, then team tabs of four)
-- `--worktree shared|dedicated|auto`
+- `--worktree shared|dedicated` (default `shared`: the lead's checkout)
 - `--plan-mode`
 - `--prompt <text>`: required
 
@@ -154,7 +154,7 @@ Frontmatter keys:
 | `thinking`      | `off` `minimal` `low` `medium` `high` `xhigh`    |
 | `plan_mode`     | boolean                                          |
 | `plan_approval` | `lead` (default) or `none`                       |
-| `worktree`      | `shared` (default), `dedicated`, `auto`          |
+| `worktree`      | `shared` (default) or `dedicated`                |
 | `auto_claim`    | boolean; claim the next free task when idle      |
 
 Unknown keys are ignored. Invalid values (bad kind, thinking with `opencode`)

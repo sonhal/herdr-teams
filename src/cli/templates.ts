@@ -63,7 +63,7 @@ export function installTemplateCommands(
     );
     if (!identity.home || !identity.teamId) throw new Error('Select a team');
     const db = new Store(identity.home, identity.teamId);
-    db.authorize(identity.agent, true);
+    db.authorize(identity.agent, true, identity.paneId);
     print(
       new Config(db.config().repository_dir ?? process.cwd(), env).save(
         db,

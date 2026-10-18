@@ -1,7 +1,7 @@
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hooks } from './hooks.js';
-import { Store, clip, type Task } from './store.js';
+import { Store, checkTaskText, clip, type Task } from './store.js';
 export function planApproval(db: Store, task: Task): 'lead' | 'none' {
   return (
     task.plan_approval ??
@@ -49,7 +49,9 @@ export class Plans {
                 ? 'approved'
                 : 'pending'
               : 'rejected',
-          feedback: outcome.code === 0 ? null : outcome.stderr,
+          // Hook output may hold escape codes, which take six bytes as JSON.
+          feedback:
+            outcome.code === 0 ? null : clip(outcome.stderr, (16 * 1024) / 6),
         };
         current.status =
           outcome.code === 0 && planApproval(this.db, task) === 'none'
@@ -74,6 +76,7 @@ export class Plans {
   verdict(id: string, approve: boolean, feedback?: string) {
     if (!approve && !feedback?.trim())
       throw new Error('Rejection feedback is required');
+    checkTaskText('feedback', feedback);
     const task = this.db.editTask(id, (current) => {
       if (!current.plan || !current.owner)
         throw new Error('Task has no submitted plan or owner');

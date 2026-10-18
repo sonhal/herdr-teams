@@ -33,7 +33,7 @@ export function installCoreCommands(
     if (!identity.teamId)
       throw new Error('Select a team with --team or HERDR_TEAMS_TEAM');
     const db = new Store(home, resolveTeamId(home, identity.teamId)!);
-    const actor = db.authorize(identity.agent, privileged);
+    const actor = db.authorize(identity.agent, privileged, identity.paneId);
     return { db, actor };
   }
   function print(value: unknown): void {

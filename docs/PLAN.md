@@ -191,7 +191,7 @@ team) does the following:
 
 ```
 herdr-teams spawn <name> [--agent <definition>] [--kind claude|codex|pi]
-    [--model M] [--thinking T] [--plan-mode] [--worktree shared|dedicated|auto]
+    [--model M] [--thinking T] [--plan-mode] [--worktree shared|dedicated]
     [--placement split|tab|workspace] --prompt "..."
 ```
 
@@ -423,7 +423,6 @@ can additionally require one:
 |---|---|
 | `shared` | works in the lead's checkout; suited to read-only or single-writer work |
 | `dedicated` | gets its own worktree at spawn |
-| `auto` | starts shared; gets a worktree when it claims a task marked `worktree: required`, or when the lead approves its request |
 
 ### 10.2 Ownership
 
@@ -588,7 +587,7 @@ plan-build:                     # short form
 auth-squad:
   description: Rework authentication
   lead: { kind: claude, model: opus }
-  defaults: { kind: claude, thinking: medium, worktree: auto, auto_claim: true }
+  defaults: { kind: claude, thinking: medium, worktree: shared, auto_claim: true }
   plan_approval: lead           # lead | none
   worktree_requests: lead       # lead | auto
   hooks:
@@ -618,7 +617,7 @@ kind: codex             # agent CLI (default: team default, then the lead's)
 model: gpt-5.4
 thinking: high
 plan_mode: false
-worktree: shared        # shared | dedicated | auto
+worktree: shared        # shared | dedicated
 auto_claim: true
 tools: read, bash       # advisory; applied where the CLI supports it
 ---

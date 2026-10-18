@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { Store, clip, type Task } from './store.js';
+import { MAX_MESSAGE_BYTES, Store, clip, type Task } from './store.js';
 
 export interface HookResult {
   code: number;
@@ -164,8 +164,20 @@ export class Hooks {
         t.status = 'in_progress';
         t.reopens += 1;
       });
-    if (task && ['followup', 'reopen_followup'].includes(policy)) {
-      const followup = this.db.add(`Follow up: ${task.subject}`, text);
+    // A task whose gate keeps failing needs one follow-up, not one per attempt.
+    if (
+      task &&
+      ['followup', 'reopen_followup'].includes(policy) &&
+      !this.db
+        .tasks()
+        .some((t) => t.followup_of === task.id && t.status !== 'completed')
+    ) {
+      const followup = this.db.add(
+        `Follow up on #${task.id}`,
+        // Hook output may hold escape codes, which take six bytes as JSON.
+        clip(text, MAX_MESSAGE_BYTES / 6),
+        { followupOf: task.id },
+      );
       const target = team.hooks?.followup_owner ?? 'member';
       if (target !== 'none')
         this.db.change(

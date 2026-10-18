@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
-import { Store } from '../src/core/store.js';
+import { MAX_MESSAGE_BYTES, Store } from '../src/core/store.js';
 import { runCliAsync } from '../src/cli/index.js';
 const homes: string[] = [];
 function fixture() {
@@ -190,4 +190,42 @@ it('rejects an invalid display name but accepts any uuid id', () => {
   expect(() =>
     new Store(home, randomUUID()).create('lead', 'dev'),
   ).not.toThrow();
+});
+
+it('bounds task text that hooks receive in one environment variable', () => {
+  const { db } = fixture();
+  db.reserveMember('alice', { kind: 'codex', state: 'idle' });
+  const large = '\u0001'.repeat(MAX_MESSAGE_BYTES / 6 + 1);
+  expect(() => db.add('large', large)).toThrow('description');
+  expect(() => db.add(large)).toThrow('subject');
+  const task = db.add('small');
+  expect(() => db.change(task.id, 'update', 'lead', undefined, large)).toThrow(
+    'description',
+  );
+  db.change(task.id, 'claim', 'alice');
+  expect(() => db.change(task.id, 'complete', 'alice', large)).toThrow(
+    'result',
+  );
+  expect(db.task(task.id).status).toBe('in_progress');
+});
+it('acts for the teammate whose pane runs a command, whatever its environment says', async () => {
+  const { db } = fixture();
+  db.reserveMember('alice', { kind: 'codex', state: 'idle', pane_id: 'w1:p2' });
+  const task = db.add('lead only');
+  let stderr = '';
+  const code = await runCliAsync(['task', 'assign', task.id, 'alice'], {
+    version: 'test',
+    env: {
+      HERDR_TEAMS_HOME: db.home,
+      HERDR_TEAMS_TEAM: db.id,
+      HERDR_PANE_ID: 'w1:p2',
+    },
+    stdout: () => {},
+    stderr: (text) => {
+      stderr += text;
+    },
+  });
+  expect(code).toBe(1);
+  expect(stderr).toContain('Only the lead');
+  expect(db.task(task.id).owner).toBeNull();
 });

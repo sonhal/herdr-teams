@@ -21,7 +21,7 @@ export function installPlanCommands(
     const db = new Store(identity.home, identity.teamId);
     return {
       plans: new Plans(db, env),
-      actor: db.authorize(identity.agent, privileged),
+      actor: db.authorize(identity.agent, privileged, identity.paneId),
     };
   };
   const print = (v: unknown) => output(JSON.stringify(v, null, 2) + '\n');

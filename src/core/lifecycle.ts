@@ -73,11 +73,8 @@ export class Lifecycle {
     const model = options.model ?? team.defaults?.model;
     const thinking = options.thinking ?? team.defaults?.thinking;
     const resolved = adapter(kind, model, thinking);
-    if (
-      options.worktree &&
-      !['shared', 'dedicated', 'auto'].includes(options.worktree)
-    )
-      throw new Error('Invalid worktree mode');
+    if (options.worktree && !['shared', 'dedicated'].includes(options.worktree))
+      throw new Error('Invalid worktree mode; use shared or dedicated');
     const placement = options.placement ?? 'split';
     if (!['split', 'tab', 'workspace'].includes(placement))
       throw new Error('Invalid placement');
@@ -99,8 +96,7 @@ export class Lifecycle {
       ...(model ? { model } : {}),
       ...(thinking ? { thinking } : {}),
       state: 'starting',
-      worktree_mode: (options.worktree ?? 'shared') as
-        'shared' | 'dedicated' | 'auto',
+      worktree_mode: (options.worktree ?? 'shared') as 'shared' | 'dedicated',
       launch_pid: process.pid,
       started_at: Date.now(),
       plan_mode: options.planMode ?? false,
@@ -317,9 +313,10 @@ export class Lifecycle {
   }
 
   /**
-   * Lead-driven shutdown: accept on the member's behalf and close an idle
-   * member immediately. A member still working is left accepted; the next
-   * reconcile sends its exit prompt once it idles.
+   * Lead-driven shutdown: accept on the member's behalf and ask an idle member
+   * to exit; a working one gets its exit prompt from reconcile once it idles.
+   * Reconcile closes the pane after it observes the exit, so closing never
+   * cuts off an agent that is still saving its session.
    */
   async shutdown(
     member: string,
@@ -344,21 +341,13 @@ export class Lifecycle {
       }
       throw error;
     }
-    if (!['idle', 'done'].includes(status)) return { member, state: 'pending' };
-    await this.client.agentPrompt(
-      details.agent_name ?? member,
-      adapter(details.kind).exit,
-    );
-    try {
-      await this.client.paneClose(details.pane_id);
-    } catch (error) {
-      if (
-        !(error instanceof HerdrApiError) ||
-        !['pane_not_found', 'not_found'].includes(error.code)
-      )
-        throw error;
+    if (['idle', 'done'].includes(status)) {
+      await this.client.agentPrompt(
+        details.agent_name ?? member,
+        adapter(details.kind).exit,
+      );
+      this.db.patchMember(member, { shutdown_exit_sent: true });
     }
-    this.db.endMember(member, 'shut-down');
-    return { member, state: 'shut-down' };
+    return { member, state: 'pending' };
   }
 }

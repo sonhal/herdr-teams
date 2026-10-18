@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it } from 'vitest';
 import { Store } from '../src/core/store.js';
+import { runCliAsync } from '../src/cli/index.js';
 import { Worktrees, git, worktreeStatus } from '../src/core/worktrees.js';
 import { HerdrClient } from '../src/herdr/index.js';
 import { fakeHerdr, jsonReply } from './helpers/fake-herdr.js';
@@ -99,6 +100,62 @@ it('refuses running agents, dirty worktrees and unmerged branches before removal
     expect((await fake.calls()).some((args) => args[1] === 'remove')).toBe(
       false,
     );
+  } finally {
+    await fake.cleanup();
+  }
+});
+
+it('cleanup --apply removes every eligible worktree past one that fails', async () => {
+  const { db, home } = setup();
+  const base = git(home, 'rev-parse', 'HEAD');
+  for (const [member, workspace] of [
+    ['alice', 'w2'],
+    ['bob', 'w3'],
+  ] as const) {
+    const path = join(home, member);
+    git(home, 'worktree', 'add', '-b', `team/demo/${member}`, path);
+    db.reserveMember(member, {
+      kind: 'codex',
+      state: 'killed',
+      ended: 'killed',
+      worktree: {
+        path,
+        branch: `team/demo/${member}`,
+        base,
+        pane_id: `${workspace}:p1`,
+        tab_id: `${workspace}:t1`,
+        workspace_id: workspace,
+      },
+    });
+  }
+  writeFileSync(join(home, 'alice', 'alice.txt'), 'alice');
+  git(join(home, 'alice'), 'add', '.');
+  git(join(home, 'alice'), 'commit', '-m', 'unmerged');
+  const fake = await fakeHerdr([
+    jsonReply({ type: 'agent_list', agents: [] }),
+    jsonReply({ type: 'agent_list', agents: [] }),
+    jsonReply({ type: 'worktree_removed' }),
+  ]);
+  let stderr = '';
+  try {
+    const code = await runCliAsync(['cleanup', '--apply'], {
+      version: 'test',
+      env: { ...fake.env, HERDR_TEAMS_HOME: db.home, HERDR_TEAMS_TEAM: db.id },
+      stdout: () => {},
+      stderr: (text) => {
+        stderr += text;
+      },
+    });
+    expect(code).toBe(1);
+    expect(stderr).toContain('alice');
+    expect(db.config().details!.alice!.worktree).toBeDefined();
+    expect(db.config().details!.bob!.worktree).toBeUndefined();
+    expect((await fake.calls()).at(-1)).toEqual([
+      'worktree',
+      'remove',
+      '--workspace',
+      'w3',
+    ]);
   } finally {
     await fake.cleanup();
   }
