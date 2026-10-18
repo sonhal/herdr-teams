@@ -1,4 +1,5 @@
 # herdr-teams
+
 ![header](static/herdr-teams.png)
 
 > ⚠️ **Work in progress.** Not ready for use.
@@ -17,3 +18,29 @@ Codex, pi, …), each in its own herdr pane with its own model and thinking leve
   a running agent.
 
 See [docs/PLAN.md](docs/PLAN.md) for the design.
+
+## Development
+
+Requires Node.js ≥ 20 and npm. M0 is a skeleton: commands print “not
+implemented”; hooks, actions, board, and supervisor stubs log and exit 0.
+
+```sh
+npm ci
+npm run build
+npm test
+npm run lint
+npm run typecheck
+./bin/herdr-teams --help
+./bin/herdr-teams --team demo --json status
+```
+
+With herdr ≥ 0.9 installed, build first, then run:
+
+```sh
+herdr plugin link .
+herdr plugin action invoke herdr-teams.start-team
+```
+
+Linking does not build. Invoking an action requires a running herdr session.
+The shim at `bin/herdr-teams` loads `dist/bin/herdr-teams.js`. Tests use a
+scripted fake herdr executable; no agents or API keys are needed.

@@ -1,0 +1,50 @@
+id = "herdr-teams"
+name = "herdr teams"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+platforms = ["linux", "macos"]
+
+[[build]]
+command = ["npm", "ci"]
+[[build]]
+command = ["npm", "run", "build"]
+
+[[startup]]                          # reconcile and reopen supervisors after restart
+command = ["node", "dist/bin/herdr-teams.js", "_hook", "startup"]
+
+[[events]]                           # fallback path when no supervisor runs
+on = "pane.agent_status_changed"
+command = ["node", "dist/bin/herdr-teams.js", "_hook", "event"]
+[[events]]
+on = "pane.exited"
+command = ["node", "dist/bin/herdr-teams.js", "_hook", "event"]
+[[events]]
+on = "pane.closed"
+command = ["node", "dist/bin/herdr-teams.js", "_hook", "event"]
+[[events]]
+on = "pane.moved"
+command = ["node", "dist/bin/herdr-teams.js", "_hook", "event"]
+
+[[actions]]
+id = "start-team"
+title = "Start team from template"
+contexts = ["workspace"]
+command = ["node", "dist/bin/herdr-teams.js", "_action", "start-team"]
+
+[[actions]]
+id = "open-board"
+title = "Open team board"
+contexts = ["workspace"]
+command = ["node", "dist/bin/herdr-teams.js", "_action", "open-board"]
+
+[[panes]]
+id = "board"
+title = "Team board"
+placement = "split"
+command = ["node", "dist/bin/herdr-teams.js", "board"]
+
+[[panes]]
+id = "supervisor"
+title = "Team supervisor"
+placement = "split"
+command = ["node", "dist/bin/herdr-teams.js", "supervise"]
