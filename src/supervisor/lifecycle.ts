@@ -35,8 +35,10 @@ export async function syncMembers(
         a.name === (member.agent_name ?? name) && a.pane_id === member.pane_id,
     );
     if (!live) {
+      // A member that accepted shutdown has exited as asked; its screen holds
+      // only the shell it returned to.
       let output = '';
-      if (member.pane_id)
+      if (member.pane_id && !member.shutdown_accepted)
         try {
           output = await client.paneRead(member.pane_id, {
             lines: 40,
@@ -67,6 +69,12 @@ export async function syncMembers(
       }
       return;
     }
+    // Agents can start a new session in place; the end notice names the last.
+    if (
+      live.agent_session &&
+      JSON.stringify(live.agent_session) !== JSON.stringify(member.session)
+    )
+      db.patchMember(name, { session: live.agent_session });
     if (live.agent_status !== member.state) {
       db.patchMember(name, {
         state: live.agent_status,
