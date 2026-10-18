@@ -1,5 +1,8 @@
 import { Command, CommanderError } from 'commander';
 import { installCoreCommands } from './core.js';
+import { Store } from '../core/store.js';
+import { HerdrClient } from '../herdr/index.js';
+import { reconcile } from '../supervisor/delivery.js';
 import { readIdentity } from './identity.js';
 
 export interface CliOptions {
@@ -115,7 +118,8 @@ export function createCli(options: CliOptions): Command {
   leaf(program, 'supervise', '11.5', 'M4');
   leaf(program, 'install-shim', '16', 'M2');
   // TODO PLAN §7.3, §16 (M3): reconcile/deliver events; M0 hooks log and exit 0.
-  group('_hook', ['startup', 'event'], '7.3, §16', 'M3');
+  const hooks = program.command('_hook');
+  for (const name of ['startup', 'event']) hooks.command(name).action(() => {});
   group('_action', ['start-team', 'open-board'], '16', 'M2, M8');
   installCoreCommands(program, env, stdout);
   return program;
@@ -133,4 +137,33 @@ export function runCli(argv: string[], options: CliOptions): number {
     );
     return 1;
   }
+}
+
+/** Production entrypoint: keep command errors distinct from deferred delivery. */
+export async function runCliAsync(
+  argv: string[],
+  options: CliOptions,
+): Promise<number> {
+  const code = runCli(argv, options);
+  if (
+    code !== 0 ||
+    argv.some((arg) => ['--help', '-h', '--version', '-V'].includes(arg)) ||
+    !argv.length
+  )
+    return code;
+  const env = options.env ?? process.env;
+  const identity = readIdentity(env);
+  if (!identity.home) return code;
+  // Reconcile all teams: startup and fallback events may have no team identity.
+  try {
+    const client = new HerdrClient({ env });
+    for (const team of Store.teams(identity.home))
+      await reconcile(new Store(identity.home, team.name), client);
+  } catch (error) {
+    (options.stderr ?? ((text: string) => process.stderr.write(text)))(
+      `delivery deferred: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    if (argv[0] === '_hook') return 1;
+  }
+  return code;
 }

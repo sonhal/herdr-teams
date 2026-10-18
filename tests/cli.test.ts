@@ -77,8 +77,6 @@ describe('CLI skeleton', () => {
       'supervise',
       'install-shim',
     ].map((name) => [name]),
-    ['_hook', 'startup'],
-    ['_hook', 'event'],
     ['_action', 'start-team'],
     ['_action', 'open-board'],
   ])('exposes a side-effect-free placeholder for %j', (...argv) => {
