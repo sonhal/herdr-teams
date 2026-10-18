@@ -233,6 +233,82 @@ it('subscribes to socket events and resubscribes after events_lost', async () =>
   }
 });
 
+it('does not open a supervisor for a team with no live members', async () => {
+  const { ensureSupervisor } = await import('../src/supervisor/runtime.js');
+  const db = setup();
+  db.endMember('alice', 'shut-down');
+  const fake = await fakeHerdr([]);
+  try {
+    await ensureSupervisor(db, new HerdrClient({ env: fake.env }));
+    expect(db.config().supervisor?.pane_id).toBeUndefined();
+    expect(await fake.calls()).toHaveLength(0);
+  } finally {
+    await fake.cleanup();
+  }
+});
+
+it('closes its own pane and exits when no live members remain', async () => {
+  const { createServer } = await import('node:net');
+  const { supervise } = await import('../src/supervisor/runtime.js');
+  const db = setup();
+  db.endMember('alice', 'shut-down');
+  const paneId = 'w9:pQ';
+  db.updateTeam((team) => {
+    team.supervisor = { mode: 'tab', pane_id: paneId };
+  });
+  const socketPath = join(db.home, 'herdr.sock');
+  const controller = new AbortController();
+  const calls: string[][] = [];
+  const server = createServer((socket) => {
+    socket.once('data', (chunk) => {
+      const request = JSON.parse(chunk.toString()) as { method: string };
+      expect(request.method).toBe('events.subscribe');
+      socket.write(
+        JSON.stringify({
+          id: 'herdr-teams-supervisor',
+          result: { type: 'subscription_started' },
+        }) + '\n',
+      );
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(socketPath, resolve);
+  });
+  const client = new HerdrClient({
+    runner: async (_binary, argv) => {
+      calls.push([...argv]);
+      let result: unknown;
+      if (argv[0] === 'session') result = { type: 'session_snapshot', snapshot: {} };
+      else if (argv[0] === 'agent' && argv[1] === 'list')
+        result = { type: 'agent_list', agents: [] };
+      else return { stdout: '', stderr: '', exitCode: 0 };
+      return {
+        stdout: JSON.stringify({ id: 'test', result }),
+        stderr: '',
+        exitCode: 0,
+      };
+    },
+  });
+  const timeout = setTimeout(() => controller.abort(), 4000);
+  try {
+    await supervise(
+      db,
+      client,
+      { HERDR_SOCKET_PATH: socketPath, HERDR_PANE_ID: paneId },
+      controller.signal,
+      () => {},
+    );
+    expect(
+      calls.some((c) => c[0] === 'pane' && c[1] === 'close' && c[2] === paneId),
+    ).toBe(true);
+    expect(db.config().supervisor?.pane_id).toBeUndefined();
+  } finally {
+    clearTimeout(timeout);
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 it.each([
   [['steer', 'alice', 'stop that']],
   [['msg', 'send', 'alice', 'stop that', '--urgent']],

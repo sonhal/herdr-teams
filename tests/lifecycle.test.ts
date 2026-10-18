@@ -198,6 +198,79 @@ it('reports a crash with its screen and the session the member last ran', async 
     await fake.cleanup();
   }
 });
+it('shutdown accepts on the member behalf and closes an idle member', async () => {
+  const db = setup();
+  db.reserveMember('alice', {
+    kind: 'codex',
+    pane_id: pane.pane_id,
+    state: 'idle',
+    session: agent.agent_session,
+  });
+  const fake = await fakeHerdr([
+    jsonReply({ type: 'agent_info', agent }),
+    prompted,
+    jsonReply({ type: 'ok' }),
+  ]);
+  try {
+    const lifecycle = new Lifecycle(
+      db,
+      new HerdrClient({ env: fake.env }),
+      fake.env,
+    );
+    expect(await lifecycle.shutdown('alice')).toEqual({
+      member: 'alice',
+      state: 'shut-down',
+    });
+    const details = db.config().details!.alice!;
+    expect(details.ended).toBe('shut-down');
+    expect(details.shutdown_accepted).toBe(true);
+    expect((await fake.calls()).map((c) => c.slice(0, 2))).toEqual([
+      ['agent', 'get'],
+      ['agent', 'prompt'],
+      ['pane', 'close'],
+    ]);
+    expect((await fake.calls())[1]).toEqual(['agent', 'prompt', 'alice', '/quit']);
+  } finally {
+    await fake.cleanup();
+  }
+});
+
+it('shutdown leaves a working member accepted until it idles', async () => {
+  const db = setup();
+  db.reserveMember('alice', {
+    kind: 'codex',
+    pane_id: pane.pane_id,
+    state: 'working',
+  });
+  const fake = await fakeHerdr([
+    jsonReply({ type: 'agent_info', agent: { ...agent, agent_status: 'working' } }),
+    prompted,
+  ]);
+  try {
+    const lifecycle = new Lifecycle(
+      db,
+      new HerdrClient({ env: fake.env }),
+      fake.env,
+    );
+    expect(await lifecycle.shutdown('alice')).toEqual({
+      member: 'alice',
+      state: 'pending',
+    });
+    const details = db.config().details!.alice!;
+    expect(details.ended).toBeUndefined();
+    expect(details.shutdown_accepted).toBe(true);
+    await syncMembers(db, new HerdrClient({ env: fake.env }), [agent]);
+    expect((await fake.calls()).at(-1)).toEqual([
+      'agent',
+      'prompt',
+      'alice',
+      '/quit',
+    ]);
+  } finally {
+    await fake.cleanup();
+  }
+});
+
 it('kill closes the pane and records exactly one terminal state', async () => {
   const db = setup();
   db.reserveMember('alice', {

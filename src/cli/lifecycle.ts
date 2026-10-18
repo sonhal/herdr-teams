@@ -153,10 +153,14 @@ export function installLifecycleCommands(
       .filter(([, m]) => !m.ended)
       .map(([name]) => name);
     const errors: unknown[] = [];
+    const pending: string[] = [];
     for (const member of members) {
       try {
         if (force) await lifecycle.kill(member);
-        else lifecycle.requestShutdown(member);
+        else {
+          const result = await lifecycle.shutdown(member);
+          if (result.state === 'pending') pending.push(member);
+        }
       } catch (error) {
         errors.push(new Error(`${member}: ${String(error)}`));
       }
@@ -165,7 +169,8 @@ export function installLifecycleCommands(
       throw new AggregateError(errors, errors.map(String).join('; '));
     print({
       members,
-      state: force ? 'killed' : 'shutdown-requested',
+      state: force ? 'killed' : 'shutdown',
+      ...(pending.length ? { pending } : {}),
       tasks: db.tasks(),
     });
   });

@@ -31,6 +31,24 @@ export async function supervise(
   if (!env.HERDR_SOCKET_PATH)
     throw new Error('Set HERDR_SOCKET_PATH for the supervisor');
   await db.exclusive('supervisor', async () => {
+    // Forward the external signal through an internal controller so the
+    // supervisor can also stop itself when its roster empties.
+    const internal = new AbortController();
+    const forward = () => internal.abort();
+    signal.addEventListener('abort', forward, { once: true });
+    const closeSupervisor = async () => {
+      db.updateTeam((team) => {
+        if (team.supervisor) delete team.supervisor.pane_id;
+      });
+      internal.abort();
+      if (env.HERDR_PANE_ID) {
+        try {
+          await client.paneClose(env.HERDR_PANE_ID);
+        } catch {
+          /* The pane may already be gone. */
+        }
+      }
+    };
     const ready = join(db.root, 'locks', 'supervisor', 'ready');
     const panes = () => {
       const team = db.config();
@@ -47,7 +65,7 @@ export async function supervise(
     const schedule = (event?: unknown, tick = false) => {
       queue = queue
         .then(async () => {
-          if (signal.aborted) return;
+          if (internal.signal.aborted) return;
           applyEvent(db, event);
           await reconcile(db, client, env);
           if (tick) await checkAdvisories(db, client);
@@ -56,6 +74,7 @@ export async function supervise(
           output(
             `supervisor · ${members.filter((m) => !m.ended).length} members · ${members.filter((m) => m.advisory).length} advisories\n`,
           );
+          if (!members.some((m) => !m.ended)) await closeSupervisor();
         })
         .catch((error: unknown) => {
           output(`supervisor: ${String(error)}\n`);
@@ -66,7 +85,7 @@ export async function supervise(
       throw new Error('tick_seconds must be positive');
     const clock = setInterval(() => schedule(undefined, true), seconds * 1000);
     try {
-      while (!signal.aborted) {
+      while (!internal.signal.aborted) {
         await new Promise<void>((resolve) => {
           const socket = connect(env.HERDR_SOCKET_PATH!);
           let subscribed = '';
@@ -81,7 +100,7 @@ export async function supervise(
           });
           let buffer = '';
           const abort = () => socket.destroy();
-          signal.addEventListener('abort', abort, { once: true });
+          internal.signal.addEventListener('abort', abort, { once: true });
           socket.on('connect', () => {
             const currentPanes = panes();
             subscribed = JSON.stringify(currentPanes);
@@ -151,27 +170,28 @@ export async function supervise(
           socket.on('close', () => {
             roster.close();
             rmSync(ready, { force: true });
-            signal.removeEventListener('abort', abort);
+            internal.signal.removeEventListener('abort', abort);
             resolve();
           });
         });
-        if (!signal.aborted)
+        if (!internal.signal.aborted)
           await new Promise<void>((resolve) => {
             const abort = () => {
               clearTimeout(timer);
               resolve();
             };
             const timer = setTimeout(() => {
-              signal.removeEventListener('abort', abort);
+              internal.signal.removeEventListener('abort', abort);
               resolve();
             }, 1000);
-            signal.addEventListener('abort', abort, { once: true });
+            internal.signal.addEventListener('abort', abort, { once: true });
           });
       }
     } finally {
       clearInterval(clock);
       rmSync(ready, { force: true });
       await queue;
+      signal.removeEventListener('abort', forward);
     }
   });
 }
@@ -179,6 +199,7 @@ export async function supervise(
 export async function ensureSupervisor(db: Store, client: HerdrClient) {
   const team = db.config();
   if (team.supervisor?.mode === 'off') return;
+  if (!Object.values(team.details ?? {}).some((m) => !m.ended)) return;
   await db.exclusive('supervisor-open', async () => {
     const existing = db.config().supervisor;
     if (existing?.pane_id) {

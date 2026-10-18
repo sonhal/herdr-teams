@@ -21,7 +21,7 @@ import { applyEvent } from '../src/supervisor/events.js';
 import { supervise } from '../src/supervisor/runtime.js';
 import { runCliAsync } from '../src/cli/index.js';
 import { agent, pane } from './helpers/fixtures.js';
-import { fakeHerdr } from './helpers/fake-herdr.js';
+import { fakeHerdr, jsonReply } from './helpers/fake-herdr.js';
 
 const homes: string[] = [];
 afterEach(() =>
@@ -220,6 +220,33 @@ it('records a kill when the pane has already disappeared', async () => {
   await new Lifecycle(db, h.client, {}).kill('alice');
   expect(db.config().details!.alice!.ended).toBe('killed');
   expect(db.task(task.id).owner).toBeNull();
+});
+
+it('done accepts shutdown for idle members and closes their panes', async () => {
+  const db = setup();
+  const fake = await fakeHerdr([
+    jsonReply({ type: 'agent_info', agent }),
+    jsonReply({ type: 'agent_prompted', agent }),
+    jsonReply({ type: 'ok' }),
+    jsonReply({ type: 'agent_list', agents: [] }),
+  ]);
+  try {
+    const code = await runCliAsync(['done'], {
+      version: 'test',
+      env: {
+        ...fake.env,
+        HERDR_TEAMS_HOME: db.home,
+        HERDR_TEAMS_TEAM: db.team,
+      },
+      stdout: () => {},
+      stderr: () => {},
+    });
+    expect(code).toBe(0);
+    expect(db.config().details!.alice!.ended).toBe('shut-down');
+    expect(db.config().details!.alice!.shutdown_accepted).toBe(true);
+  } finally {
+    await fake.cleanup();
+  }
 });
 
 it('done --force continues past a missing pane and closes the others', async () => {

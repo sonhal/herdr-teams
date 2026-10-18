@@ -13,7 +13,7 @@ const commands = {
   spawn: 'Spawn a named teammate with its role and settings',
   shutdown: 'Request or answer a graceful shutdown',
   kill: 'Close a teammate pane and release its active tasks',
-  done: 'Request whole-team shutdown; --force kills remaining members',
+  done: 'Shut the team down; --force kills remaining members',
   peek: 'Read recent teammate output',
   steer: 'Queue urgent steering input',
   interrupt: 'Interrupt a teammate while preserving its session',
