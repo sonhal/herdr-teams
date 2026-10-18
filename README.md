@@ -159,3 +159,45 @@ failures retain the open task and apply `hooks.failure_action` (`warn`,
 `followup_owner` to `member`. Hook timeouts default to 600 seconds.
 Existing `.pi/team-hooks/task_completed.sh` hooks also run with JSON as their
 first argument and `PI_TEAM` set.
+
+## Templates and agent definitions
+
+Put reusable roles in `.herdr/agents/<name>.md` with YAML frontmatter and a
+markdown instruction body. Project `.herdr/` definitions take precedence over
+`.pi/agents/`, `.claude/agents/` and global definitions in
+`~/.config/herdr-teams/agents/`.
+
+```yaml
+---
+kind: codex
+thinking: high
+worktree: shared
+---
+Review changes and report defects with file and line references.
+```
+
+Define teams in `.herdr/teams.yaml` or `~/.config/herdr-teams/teams.yaml`:
+
+```yaml
+review:
+  defaults: { kind: codex, thinking: medium }
+  supervisor: { mode: pane }
+  members:
+    - { name: alice, agent: reviewer }
+  tasks:
+    - { subject: Review the implementation, owner: alice }
+```
+
+A short form such as `review: [reviewer]` also works. Explicit spawn flags
+override definitions, then team defaults, then lead defaults. Unknown
+frontmatter keys are ignored. Seed-task owner `$lead` refers to the runtime
+lead name.
+
+```sh
+herdr-teams team start review --name review-session
+herdr-teams --team review-session team save saved-review --scope project
+herdr-teams spawn alice --agent reviewer --model <model> --prompt "Review tests"
+```
+
+Saving exports role definitions and seed tasks, without pane IDs or task run
+state. A failed start retains its team and launch records for inspection.

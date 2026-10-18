@@ -47,8 +47,6 @@ describe('CLI skeleton', () => {
   });
   it.each([
     ['team'],
-    ['team', 'start', 'template'],
-    ['team', 'save', 'template'],
     ...['status', 'log', 'board'].map((name) => [name]),
     ['_action', 'start-team'],
     ['_action', 'open-board'],

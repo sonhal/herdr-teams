@@ -1,6 +1,7 @@
 import { mkdirSync, symlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { Config } from '../core/config.js';
 import { pluginRoot } from '../core/paths.js';
 import { Command } from 'commander';
 import { Store } from '../core/store.js';
@@ -52,17 +53,31 @@ export function installLifecycleCommands(
     print({ path: target, instruction: 'Ensure this directory is on PATH' });
   });
   const spawn = replace('spawn', 'spawn <name>')
+    .option('--agent <definition>', 'agent definition')
     .option('--kind <kind>', 'agent CLI')
     .option('--model <model>', 'model name')
     .option('--thinking <level>', 'thinking effort')
     .option('--placement <placement>', 'split, tab or workspace', 'split')
-    .option('--worktree <mode>', 'shared, dedicated or auto', 'shared')
+    .option('--worktree <mode>', 'shared, dedicated or auto')
     .option('--plan-mode', 'request a plan before coding')
     .requiredOption('--prompt <text>', 'opening instructions');
   spawn.action(async (member: string) => {
-    print(
-      await context(spawn).lifecycle.spawn(member, spawn.opts<SpawnOptions>()),
-    );
+    const { db, lifecycle } = context(spawn);
+    const flags = spawn.opts<SpawnOptions & { agent?: string }>();
+    const definition = flags.agent
+      ? new Config(db.config().repository_dir ?? process.cwd(), env).definition(
+          flags.agent,
+        )
+      : {};
+    const settings: SpawnOptions = {
+      ...definition,
+      ...flags,
+      ...((flags.planMode ?? definition.plan_mode) !== undefined
+        ? { planMode: flags.planMode ?? definition.plan_mode! }
+        : {}),
+      ...(flags.agent ? { definition: flags.agent } : {}),
+    };
+    print(await lifecycle.spawn(member, settings));
   });
   const shutdown = replace('shutdown', 'shutdown [name]')
     .option('--accept', 'accept your pending shutdown request')
