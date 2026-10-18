@@ -145,6 +145,14 @@ export class Config {
       throw new Error('Invalid plan approval');
     adapter(value.kind ?? 'codex', value.model, value.thinking);
   }
+  templates(): string[] {
+    return [
+      ...new Set([
+        ...Object.keys(mapping(join(this.global, 'teams.yaml'))),
+        ...Object.keys(mapping(join(this.cwd, '.herdr', 'teams.yaml'))),
+      ]),
+    ].sort();
+  }
   template(name: string): Template {
     key(name);
     const values = {

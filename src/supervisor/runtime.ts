@@ -3,6 +3,7 @@ import { Store } from '../core/store.js';
 import { HerdrClient } from '../herdr/index.js';
 import { reconcile } from './delivery.js';
 import { checkAdvisories } from './advisories.js';
+import { syncSidebar } from './sidebar.js';
 import { applyEvent } from './events.js';
 
 export async function supervise(
@@ -23,6 +24,7 @@ export async function supervise(
           applyEvent(db, event);
           await reconcile(db, client, env);
           if (tick) await checkAdvisories(db, client);
+          await syncSidebar(db, client);
           const members = Object.values(db.config().details ?? {});
           output(
             `supervisor · ${members.filter((m) => !m.ended).length} members · ${members.filter((m) => m.advisory).length} advisories\n`,

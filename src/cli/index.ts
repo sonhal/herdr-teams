@@ -1,4 +1,6 @@
 import { Command, CommanderError } from 'commander';
+import { installBoardCommands } from './board.js';
+import { syncSidebar } from '../supervisor/sidebar.js';
 import { installTemplateCommands } from './templates.js';
 import { installPlanCommands } from './plans.js';
 import { installWorktreeCommands } from './worktrees.js';
@@ -133,6 +135,7 @@ export function createCli(options: CliOptions): Command {
   installWorktreeCommands(program, env, stdout);
   installPlanCommands(program, env, stdout);
   installTemplateCommands(program, env, stdout);
+  installBoardCommands(program, env, stdout);
   return program;
 }
 
@@ -156,8 +159,9 @@ export async function runCliAsync(
   options: CliOptions,
 ): Promise<number> {
   const code = 0;
+  const program = createCli(options);
   try {
-    await createCli(options).parseAsync(argv.length ? argv : ['--help'], {
+    await program.parseAsync(argv.length ? argv : ['--help'], {
       from: 'user',
     });
   } catch (error) {
@@ -172,6 +176,8 @@ export async function runCliAsync(
     !argv.length
   )
     return code;
+  const command = program.args[0];
+  if (['status', 'board', 'log', 'supervise'].includes(command ?? '')) return 0;
   const env = options.env ?? process.env;
   const identity = readIdentity(env);
   if (!identity.home) return code;
@@ -180,14 +186,17 @@ export async function runCliAsync(
     const client = new HerdrClient({ env });
     for (const team of Store.teams(identity.home)) {
       const db = new Store(identity.home, team.name);
-      if (argv[0] === '_hook' && env.HERDR_PLUGIN_EVENT_JSON)
+      if (command === '_hook' && env.HERDR_PLUGIN_EVENT_JSON)
         applyEvent(db, JSON.parse(env.HERDR_PLUGIN_EVENT_JSON) as unknown);
       if (identity.agent && team.details?.[identity.agent])
         db.patchMember(identity.agent, { last_activity: Date.now() });
       await reconcile(db, client, env);
+      if (command === '_hook' && program.args[1] === 'event')
+        await syncSidebar(db, client);
       if (
-        (argv[0] === '_hook' && argv[1] === 'startup') ||
-        (argv[0] === 'team' && ['create', 'start'].includes(argv[1] ?? ''))
+        (command === '_hook' && program.args[1] === 'startup') ||
+        (command === 'team' &&
+          ['create', 'start'].includes(program.args[1] ?? ''))
       )
         await ensureSupervisor(db, client);
     }
@@ -195,7 +204,7 @@ export async function runCliAsync(
     (options.stderr ?? ((text: string) => process.stderr.write(text)))(
       `delivery deferred: ${error instanceof Error ? error.message : String(error)}\n`,
     );
-    if (argv[0] === '_hook') return 1;
+    if (command === '_hook') return 1;
   }
   return code;
 }

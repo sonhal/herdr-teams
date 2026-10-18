@@ -24,8 +24,7 @@ See [docs/PLAN.md](docs/PLAN.md) for the design.
 Requires Node.js ≥ 20 and npm. M1 implements persistent teams, tasks with
 dependencies and exclusive claiming, inboxes, and an event log. M2 adds spawning, labels, bootstrap, shutdown and kill. M3 adds idle inbox
 delivery, event hooks, turn reports, auto-claim and restart reconciliation.
-M4 adds the supervisor, progress advisories and correction commands. The board
-remains a placeholder.
+M4 adds the supervisor, progress advisories and correction commands. M8 adds the terminal board, status, logs and sidebar labels.
 
 ```sh
 npm ci
@@ -201,3 +200,21 @@ herdr-teams spawn alice --agent reviewer --model <model> --prompt "Review tests"
 
 Saving exports role definitions and seed tasks, without pane IDs or task run
 state. A failed start retains its team and launch records for inspection.
+
+## Board and logs
+
+```sh
+herdr-teams --team demo board
+herdr-teams --team demo board --once
+herdr-teams --team demo status --json
+herdr-teams --team demo log --follow
+```
+
+The board shows status columns, members, time in state, unread mail, dependencies,
+branches and recent lead messages. Tab switches between tasks and members;
+j/k selects. Enter peeks; m sends a message; u steers; i interrupts; r releases;
+a assigns; o reopens; p approves a plan; n rejects with feedback; x kills; q exits.
+Actions use the CLI's usual permission and blocked-agent checks.
+
+The supervisor updates member labels and workspace progress tokens. Closing the
+supervisor leaves event hooks active and shows it as offline on the board.
