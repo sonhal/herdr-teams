@@ -7,7 +7,7 @@ import { MAX_MESSAGE_BYTES, Store } from '../src/core/store.js';
 import { Hooks } from '../src/core/hooks.js';
 import { HerdrClient } from '../src/herdr/index.js';
 import { reconcile } from '../src/supervisor/delivery.js';
-import { agent } from './helpers/fixtures.js';
+import { agent, pane } from './helpers/fixtures.js';
 import { fakeHerdr, jsonReply } from './helpers/fake-herdr.js';
 
 const homes: string[] = [];
@@ -436,9 +436,14 @@ it('creates a team from an ordinary herdr pane in the hooks’ state home', asyn
   );
   const fake = await fakeHerdr([
     jsonReply({ type: 'agent_list', agents: [] }),
+    // herdr v0.9.5 src/api/schema/{response,plugins}.rs: PluginPaneInfo.
     jsonReply({
       type: 'plugin_pane_opened',
-      plugin_pane: { pane_id: 'w1:p5' },
+      plugin_pane: {
+        plugin_id: 'herdr-teams',
+        entrypoint: 'supervisor',
+        pane: { ...pane, pane_id: 'w1:p5' },
+      },
     }),
   ]);
   try {

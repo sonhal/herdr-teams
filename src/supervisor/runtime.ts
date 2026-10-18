@@ -161,14 +161,17 @@ export async function ensureSupervisor(db: Store, client: HerdrClient) {
       ],
       'plugin_pane_opened',
     );
-    const pane = result.plugin_pane as { pane_id?: unknown } | undefined;
-    if (typeof pane?.pane_id !== 'string')
+    // herdr nests the pane: plugin_pane is { plugin_id, entrypoint, pane }.
+    const opened = result.plugin_pane as
+      { pane?: { pane_id?: unknown } } | undefined;
+    const paneId = opened?.pane?.pane_id;
+    if (typeof paneId !== 'string')
       throw new Error('Invalid supervisor pane response');
     db.updateTeam((config) => {
       config.supervisor = {
         ...config.supervisor,
         mode: config.supervisor?.mode ?? 'pane',
-        pane_id: pane.pane_id as string,
+        pane_id: paneId,
       };
     });
   });
