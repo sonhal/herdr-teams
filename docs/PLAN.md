@@ -26,10 +26,12 @@ herdr **tabs** or **workspaces**.
 | Team | Agent definitions as markdown files |
 | Team | **New:** git worktrees per teammate or per task, managed by the lead |
 | Coordination | Persistent shared task board with statuses (and dependencies) |
-| Coordination | Plan-approval mode: a teammate must get its plan approved before touching code |
+| Coordination | Plan mode: a teammate writes a plan first; the team decides whether it waits for the lead's approval |
 | Coordination | Shell quality-gate hooks that run when a task completes |
 | Communication | Direct messages, broadcast to the team, reports to the lead |
 | Communication | Idle teammates wake up when work arrives (push from herdr events, not polling) |
+| Supervision | **New:** live state from herdr, time in state, stall / needs-input advisories |
+| Supervision | **New:** peek, steer, urgent messages, interrupt a turn while keeping context, release a task, kill |
 
 ## 2. Research summary
 
@@ -80,10 +82,11 @@ herdr **tabs** or **workspaces**.
 
 | Project | What it is | What we borrow |
 |---|---|---|
-| [burggraf/pi-teams](https://github.com/burggraf/pi-teams) | Pi extension; port of claude-code-teams-mcp; panes via tmux/Zellij/iTerm2/WezTerm/WT | Tool vocabulary (`team_create`, `spawn_teammate`, `task_*`, `send_message`, `broadcast`, `task_submit_plan`/`task_evaluate_plan`); `teams.yaml` template list; markdown agent definitions; "save running team as template". **Improve on:** 30 s idle polling, hooks that can't block, file-per-message JSON rewrite. |
+| [burggraf/pi-teams](https://github.com/burggraf/pi-teams) | Pi extension; port of claude-code-teams-mcp; panes via tmux/Zellij/iTerm2/WezTerm/WT | Tool vocabulary (`team_create`, `spawn_teammate`, `task_*`, `send_message`, `broadcast`, `task_submit_plan`/`task_evaluate_plan`); `teams.yaml` template list; markdown agent definitions; "save running team as template". **Plan mode in practice** (verified in source): `plan_mode_required` is stored but never read. It isn't in the teammate's prompt and isn't enforced. `task_submit_plan` only stores the text and sets `planning`; the lead isn't notified and the teammate isn't told to wait. The plan is mainly for the lead's awareness, and the lead steps in through ordinary messages. **Improve on:** 30 s idle polling, hooks that can't block, file-per-message JSON rewrite, **no stall signal and no way to correct a running agent**. |
 | [Claude Code agent teams](https://code.claude.com/docs/en/agent-teams) (Anthropic) | Built-in experimental lead/teammates/task list/mailbox | Task **dependencies** that auto-unblock; **file-locked claiming**; **automatic delivery** (no polling); **idle notification carries the teammate's final answer**; `TaskCreated`/`TaskCompleted`/`TeammateIdle` hooks where **exit 2 = reject + feed stderr back**; shutdown **handshake** (teammate may refuse); inter-agent messages are marked as **not from the user** (a teammate can't relay approvals). |
-| [tmustier/pi-agent-teams](https://github.com/tmustier/pi-agent-teams) | Pi port of Claude agent teams | Per-teammate **worktree** option + `/team cleanup`; **auto-claim** of next unblocked task; **urgent** messages that interrupt a working agent; hook **failure policy** (`warn` / `reopen` / `followup` / `reopen_followup`, max reopens, follow-up owner); **stall detection** (no activity > N min); `/team done` summary; `/team gc`; `delegate` action (spawn + create tasks in one call). |
-| [giuseppecrj/pi-herdr-agents](https://github.com/giuseppecrj/pi-herdr-agents) | Async Pi subagents, herdr-only | Proven herdr layout (extension-owned `Agents` tab, **4 panes per tab then overflow tab**, no focus stealing); **worktree contract**: base resolved to exact SHA; one branch per parallel writer; completion report = path, branch, base/head SHA, commits ahead, changed files, clean/dirty/conflicted; **never push/merge/remove on its own**; removal only when clean and no live holder, with `--preserve` WIP commit; `caller_ping` (child asks parent for help); a herdr **sidebar plugin**; model **task categories** (`task:review`, ...) and cross-family review. |
+| [tmustier/pi-agent-teams](https://github.com/tmustier/pi-agent-teams) | Pi port of Claude agent teams | Per-teammate **worktree** option + `/team cleanup`; **auto-claim** of next unblocked task; **urgent** messages that interrupt a working agent (pi `steer` delivery); **stall detection** (no agent event for 5 min, then `⚠ stalled` with time-in-state); hook **failure policy** (`warn` / `reopen` / `followup` / `reopen_followup`, max reopens, follow-up owner); **stall detection** (no activity > N min); `/team done` summary; `/team gc`; `delegate` action (spawn + create tasks in one call). |
+| [giuseppecrj/pi-herdr-agents](https://github.com/giuseppecrj/pi-herdr-agents) | Async Pi subagents, herdr-only | Proven herdr layout (extension-owned `Agents` tab, **4 panes per tab then overflow tab**, no focus stealing); **worktree contract**: base resolved to exact SHA; one branch per parallel writer; completion report = path, branch, base/head SHA, commits ahead, changed files, clean/dirty/conflicted; **never push/merge/remove on its own**; removal only when clean and no live holder, with `--preserve` WIP commit; `caller_ping` (child asks parent for help); **supervision**: herdr pane state is "the coarse authority", a **no-progress advisory** (default 15 min) fires once per episode and never kills, **interrupt = Esc, which keeps the session**, `stalled`/`recovered` notices go to the parent, and **interactive children stay quiet**; a herdr **sidebar plugin**; model **task categories** (`task:review`, ...) and cross-family review. |
+| [dantetekanem/pi-extended-teams](https://github.com/dantetekanem/pi-extended-teams) | "Control-first" Pi subagents with live navigation | One-key **message (`m`) / interrupt while keeping context (`i`) / stop (`x`)** on a running agent; verification commands with a limited number of repair attempts; reports keep the agent's *claimed* outcome separate from the *checked* result. |
 | [nicobailon/pi-subagents](https://github.com/nicobailon/pi-subagents) | Pi delegation + scripted workflows | Worktree **handoff manifest** (patch + metadata) so the orchestrator can apply/inspect; **acceptance gates** (`gate: "npm test"` run by the host, optional JSON output); watchdog/scope monitoring idea. |
 | [picassio/pi-fleet](https://github.com/picassio/pi-fleet) | Cross-device Pi orchestration over Tailscale | Single-writer append-only logs (no CRDTs); "state lives at the edges". Cross-machine is **out of scope for v1**; herdr's own remote/SSH support is the natural path later. |
 
@@ -97,6 +100,8 @@ herdr **tabs** or **workspaces**.
 | D4 | Agents use the team through a **`herdr-teams` CLI** (works from any agent's shell), taught by an injected instruction block/skill. An **MCP server** wrapping the same core comes later for typed tools. | (assumed) |
 | D5 | **TypeScript on Node ≥ 20**: same ecosystem as pi-teams, Node is near-universal, and the manifest `[[build]]` runs `npm ci && npm run build`. | (assumed) |
 | D6 | Config in `.herdr/` (project) and `~/.config/herdr-teams/` (global). Agent definitions are also **read** from `.pi/agents/` and `.claude/agents/` for compatibility. | (assumed) |
+| D7 | **Light enforcement.** Plan mode is a prompt convention plus a team setting, not a sandbox. Determinism goes only where it's cheap and clearly useful: task locking, quality-gate exit codes, and never typing into a `blocked` agent. | **confirmed** |
+| D8 | **Live supervision** is a core feature: herdr state, stall advisories, interrupt with context kept, steering and urgent messages (§10). | **confirmed** |
 
 ## 4. Architecture
 
@@ -160,12 +165,13 @@ teams/<team>/
 ```jsonc
 {
   "id": "12", "subject": "Add rate limiter", "description": "...",
-  "status": "pending",          // pending | planning | awaiting_approval |
-                                // in_progress | completed | failed | deleted
+  "status": "pending",          // pending | planning | in_progress |
+                                // completed | failed | deleted
   "owner": "alice" | null,
   "blockedBy": ["7"], "blocks": [],
-  "plan_required": true, "plan": { "version": 2, "path": "plans/12-2.md",
-                                   "feedback": "..." },
+  "plan_mode": true,            // write a plan first (see §9)
+  "plan": { "version": 2, "path": "plans/12-2.md",
+            "verdict": "approved|rejected|null", "feedback": "..." },
   "worktree": { "mode": "auto|shared|dedicated", "branch": "...", ... },
   "gate": "npm test",           // optional per-task acceptance command
   "result": "summary from teammate", "reopens": 0,
@@ -191,9 +197,8 @@ The inbox file is the source of truth. Delivery means injecting a prompt.
 3. If bob is `blocked` (a permission or question UI), we **never** type into
    it, and herdr refuses anyway. Instead the lead gets a notice: "bob is
    blocked".
-4. **Urgent** messages (`--urgent`) are delivered while bob is `working`, using
-   the adapter's "steer" behavior (most CLIs queue typed input). If an adapter
-   can't steer safely, it falls back to normal queued delivery.
+4. **Urgent** messages (`--urgent`) are delivered while bob is `working`
+   instead of waiting. See §10.3 for steering and interrupting.
 
 The envelope marks the sender as an agent, not the user, following Claude's
 rule:
@@ -265,9 +270,10 @@ must be verified against the current CLI before we implement it.**
 | model | `--model <m>` | `-m <m>` | `--model <provider/m>` |
 | thinking | effort setting / `--settings` | `-c model_reasoning_effort=<lvl>` | `--thinking <lvl>` |
 | extra instructions | `--append-system-prompt` | `-c experimental_instructions_file` / AGENTS.md | `--append-system-prompt` (verify) |
-| read-only (plan phase) | `--permission-mode plan` | `-s read-only` | tool allowlist (verify) |
 | exit | `/exit` | `/quit` | `/quit` (verify) |
-| urgent/steer while working | typed input queues | typed input queues | `steer` queue |
+| interrupt turn, keep context | `esc` | `esc` | `esc` |
+| steer while working (§10.3) | typed prompt is picked up mid-turn (verify) | Enter steers / Tab queues (verify by version) | native `steer` queue |
+| progress probe (§10.2) | screen hash | screen hash | screen hash, plus session JSONL mtime (optional) |
 
 Thinking levels are normalized to `off | minimal | low | medium | high | xhigh`
 and each adapter maps them to the closest native value.
@@ -393,26 +399,40 @@ one doesn't exist yet, then updates `teams.yaml`.
 
 ## 9. Plan approval and quality gates
 
-### Plan approval
+### Plan approval (light)
 
-The flow is `pending` → (claim) → `planning` → `herdr-teams plan submit
-<task> --file plan.md` → `awaiting_approval` → lead runs
-`herdr-teams plan approve <task>` or `plan reject <task> --feedback "..."`.
-Approval moves the task to `in_progress`; rejection moves it back to
-`planning`, and the feedback is delivered to the teammate.
+Plan mode is a **convention, not a sandbox** (D7). It works like pi-teams,
+with two improvements: the lead is told about the plan, and the teammate hears
+the verdict.
 
-Enforcement comes in layers:
+- **Opt-in.** Set `plan_mode: true` on an agent definition, a teammate at
+  spawn, or a single task.
+- **Instruction-based.** The bootstrap prompt (or the task-assignment prompt)
+  says: "before changing code for this task, write a plan and run
+  `herdr-teams plan submit <task> --file plan.md`". Teammates keep all their
+  tools; nothing is locked down.
+- **Submitting** stores the plan as `plans/<task>-<n>.md`, sets the task to
+  `planning`, and puts a short message in the lead's inbox (the subject, the
+  plan's path, and its first lines), so the lead knows without polling.
+- **Waiting is a team setting.** It changes only what the teammate is told
+  to do:
 
-1. **Instruction.** The bootstrap prompt says not to edit until approved.
-2. **Adapter read-only mode.** Where the CLI supports one (e.g. claude
-   `--permission-mode plan`, codex `-s read-only`), the teammate starts in it.
-   On approval, the adapter switches mode, or the plugin restarts the agent in
-   write mode and resumes the same session. This needs a per-adapter spike
-   (§12).
-3. **Worktree.** For `auto` and `dedicated` members the worktree is created
-   only on approval, so a planner has no place of its own to write.
-4. **Gate check.** If the teammate's checkout changed before approval, the
-   lead is warned.
+  | `plan_approval` | Teammate is told to... | Lead's role |
+  |---|---|---|
+  | `none` (pi-teams behaviour) | submit, then **continue** | read it for awareness and step in with a normal message if needed |
+  | `lead` (default) | submit, then **stop and wait** for a reply | review, then `plan approve` or `plan reject --feedback` |
+
+  A single member or task can override the team setting.
+- **Verdicts are just messages.** `herdr-teams plan approve <task>` and
+  `plan reject <task> --feedback "..."` are shortcuts. They record the
+  verdict on the task, set the status (`in_progress` or `planning`), and
+  send the teammate an ordinary inbox message. herdr delivers it as soon as
+  the waiting teammate is idle, so it never has to check.
+- A late verdict, sent after the teammate has already moved on, is still
+  recorded and delivered. It is not an error, unlike in pi-teams.
+- If you want to see plans yourself, tell the lead so in plain language (for
+  example "show me plans before approving"). There is no human-approval mode
+  in v1.
 
 ### Quality-gate hooks
 
@@ -424,7 +444,7 @@ any executable named after its event:
 | `task_created` | before a task is stored | reject the task; stderr goes to the creator |
 | `task_completed` | before a task becomes `completed` | **reject the completion**: the task stays `in_progress`, stderr goes to the owner |
 | `teammate_idle` | when a teammate goes idle | keep it working; stderr becomes its next prompt |
-| `plan_submitted` | before the lead sees a plan | auto-reject with feedback |
+| `plan_submitted` | before the lead is notified | auto-reject with feedback (e.g. a plan without a test strategy) |
 
 Exit 0 lets the action through. Any other code is a hook failure, handled by
 the team's **failure policy** (`warn | reopen | followup | reopen_followup`,
@@ -439,21 +459,129 @@ pi-subagents) that runs before the hook.
 pi-teams' `.pi/team-hooks/task_completed.sh` is detected and run with its old
 argument convention.
 
-## 10. Board pane and observability
+## 10. Live supervision
+
+pi-teams gives no real signal when an agent is stuck and no way to correct
+it mid-run. herdr-teams makes **seeing** and **correcting** running
+teammates a core feature (D8). The rule throughout comes from
+pi-herdr-agents: **supervision is advisory**. It informs the lead and you,
+but it never kills, restarts or retries an agent on its own.
+
+### 10.1 State: herdr is the authority
+
+Live state comes from **herdr's agent state**, not from guessing at output.
+herdr detects it per agent (screen manifests, or the agent's own state
+reports) as `idle`, `working`, `blocked`, `done` or `unknown`, and it is more
+reliable than any heuristic of our own.
+
+- The `pane.agent_status_changed` hook records every transition in
+  `events.jsonl` with a timestamp. Time-in-state ("working 12m",
+  "blocked 3m") is computed from that log, with no extra polling.
+- `completion_seq` from herdr marks real finished turns, as opposed to
+  start-up or restored idle, so an "idle" report always means work finished.
+- Team-level states are derived from herdr state plus our own records:
+
+  | Member state | Derived from |
+  |---|---|
+  | `starting` | spawned, `agent start` not yet returned |
+  | `working` / `idle` / `blocked` | herdr state |
+  | `waiting-plan` | idle, with a submitted plan and `plan_approval: lead` |
+  | `interrupted` | we sent an interrupt and it hasn't started a new turn |
+  | `stalled` | §10.2 advisory is active |
+  | `exited` | `pane.exited` / `pane.closed` without a shutdown handshake |
+
+### 10.2 Stall detection (advisory)
+
+Being stuck means **no progress**, not long run time; a long `working`
+state is normal for big tasks (pi-herdr-agents). Progress evidence is
+anything the team can observe, in any agent CLI:
+
+1. a herdr state transition;
+2. team activity by the member: a `herdr-teams` CLI call, a message, or a
+   task update;
+3. **screen change**. The supervisor samples
+   `herdr agent read <m> --source recent --lines 40` and hashes it. A
+   spinner-only change doesn't count (`terminal_title_stripped` and
+   normalization handle that).
+
+| Condition | Default threshold | Advisory kind |
+|---|---|---|
+| `working` with no progress evidence | 10 min | `no-progress` |
+| `blocked` (permission or question prompt) | 2 min | `needs-input`: this needs a **human**, since the lead must not answer permission prompts |
+| `unknown` | 5 min | `unclassified` |
+| pane exited or closed without a handshake | immediately | `crashed`: its tasks go back to `pending` and the lead is told |
+
+Each advisory is sent **once per episode** to the lead as an inbox message.
+A matching `recovered` notice follows when progress resumes. The advisory
+says what was observed and suggests recovery: `peek`, `nudge`, `interrupt`
+or `kill`. Thresholds are team settings (`supervision.no_progress_minutes`
+and so on), and `0` disables one.
+
+Other notice paths:
+- `needs-input` also raises a **herdr notification** so the human sees it.
+- **Interactive members stay quiet.** If a human focused the member's pane
+  recently (the `pane.focused` hook) or the member is marked
+  `interactive: true`, advisories go to the board only, not to the lead.
+- **Optional auto-nudge.** With `supervision.on_no_progress: nudge`, the
+  supervisor sends one gentle prompt ("status check: reply with
+  `herdr-teams report`...") before telling the lead. The default is
+  `notify`.
+
+**Where the clock runs.** Event hooks can't notice that *nothing* happened,
+so time-based checks need a loop. It's the **supervisor**: a small process
+running in a team-owned pane (the board pane, or a minimal headless
+`herdr-teams supervise` pane in the team tab). It wakes every ~30 s and only
+reads files and runs cheap herdr reads. If it isn't running, nothing breaks;
+only stall advisories pause. The `[[startup]]` hook restarts it after a herdr
+restart.
+
+### 10.3 Correcting a running agent
+
+Four levels, from gentlest to strongest. The lead uses them through the CLI;
+you use them from the board pane's keys (as in pi-extended-teams).
+
+| Action | CLI | Board key | Mechanism | Context |
+|---|---|---|---|---|
+| **Peek** | `herdr-teams peek bob [--lines 80]` | `enter` | `herdr agent read`; or focus the pane | n/a |
+| **Message** (queued) | `msg send bob "..."` | `m` | inbox; delivered at idle (§4.4) | kept |
+| **Steer / urgent** | `msg send bob --urgent "..."` or `steer bob "..."` | `u` | while `working`: adapter steer (see below) | kept |
+| **Interrupt** | `interrupt bob [--then "new instructions"]` | `i` | `herdr agent send-keys bob esc`, wait for `idle`, then optionally prompt | **kept**: the turn is cancelled, the session stays |
+| **Stop task** | `task release 12 [--reason]` | `r` | interrupt, then return the task to `pending` and tell bob why | kept |
+| **Kill** | `kill bob` | `x` | close the pane; tasks go back to `pending` | lost |
+
+**Steering by adapter:**
+- `native`: pi's `steer` queue. Claude Code and Codex also pick up a prompt
+  typed during a turn; this needs checking per CLI version (M3 spike).
+- `interrupt-then-prompt`: the fallback for any CLI that can't steer
+  safely. It sends Esc, waits for idle, then sends the urgent message as the
+  next prompt.
+
+Steering never types into a `blocked` agent; herdr refuses with
+`agent_blocked`, and we report that instead.
+
+Authority: any member can send urgent messages. Only the lead (or you, from
+outside the team) can `interrupt`, `task release` or `kill` another member.
+This is checked by caller identity (§4.1). It's a guardrail, not a security
+boundary.
+
+## 11. Board pane and observability
 
 - **Board pane** (`[[panes]] id = "board"`, placement `split` by default): a
   live TUI with columns per status. It shows dependencies, owners, worktree
-  and branch, member states from herdr, unread counts and the last messages.
-  Keys can assign, reopen, message a member, approve or reject plans, and
-  focus a member's pane. It also runs the delivery reconcile loop while open.
-- **Sidebar:** each member's tokens (`$task`, `$team`, `$branch`) show in herdr
-  Agent rows. A team-level summary goes into the workspace token
-  (`$team_status = "3/7 done · 1 blocked"`).
-- **Stall detection:** a member that has been `working` for more than N minutes
-  with no task or message activity gets flagged to the lead.
+  and branch, unread counts and the last messages. A **member strip** shows
+  each member's derived state, time in state and active advisories (`⚠
+  no-progress 12m`, `✋ needs-input`). Keys work as in §10.3, plus assign,
+  reopen and plan approve or reject. The board also hosts the supervisor and
+  the delivery reconcile loop while open.
+- **Sidebar:** each member's tokens (`$task`, `$team`, `$branch`, `$advice`)
+  show in herdr Agent rows, and state labels override herdr's for display
+  (e.g. `working` becomes "#12 rate limiter"). A team-level summary goes into
+  the workspace token (`$team_status = "3/7 done · 1 stalled"`).
+- `herdr-teams status [member]` gives the same view as JSON or text for the
+  lead (like pi-agent-teams' `member_status`).
 - `events.jsonl` doubles as an audit trail: `herdr-teams log [--follow]`.
 
-## 11. Plugin manifest (sketch)
+## 12. Plugin manifest (sketch)
 
 ```toml
 id = "herdr-teams"
@@ -506,18 +634,19 @@ The `herdr-teams` CLI also has to be on the agents' `PATH`. The spawn env
 prepends `$HERDR_PLUGIN_ROOT/bin`, so a teammate can always call it, and
 `herdr-teams install-shim` can link it for the lead.
 
-## 12. Milestones
+## 13. Milestones
 
 | M | Deliverable | Done when |
 |---|---|---|
 | **M0** | Repo skeleton: TS, lint, vitest, manifest, `herdr` wrapper with a **fake-herdr test double** (records calls, scripted JSON replies) | `herdr plugin link .` succeeds; CI green |
 | **M1** | Core store: teams, tasks (deps, claim lock, statuses), inboxes (JSONL + cursors), events log; CLI `team/task/msg` | Concurrency tests: 20 parallel claimers, exactly one wins |
 | **M2** | Spawn + lifecycle on herdr: layout policy, claude/codex/pi adapters, metadata, shutdown handshake, kill, done | Lead in claude spawns codex + pi teammates in a real herdr session |
-| **M3** | Delivery: event hook, batched delivery, urgent, blocked handling, idle reports to lead, auto-claim, reconcile | Idle teammate wakes within ~1 s of a message; no polling |
+| **M3** | Delivery + **live supervision core**: event hook, batched delivery, idle reports to lead, auto-claim, reconcile; state log and time-in-state; `peek`, `interrupt` (Esc, context kept), urgent/steer with the interrupt-then-prompt fallback; crash handling; **steering spike** per CLI | Idle teammate wakes within ~1 s of a message, with no polling; an interrupted teammate continues with new instructions and its context intact |
+| **M3b** | Supervisor loop: no-progress / needs-input / unclassified advisories, once per episode, `recovered` notices, interactive-member quieting, optional auto-nudge | A frozen fake agent produces exactly one advisory and one `recovered` |
 | **M4** | Worktrees: modes, request/approve, create/move, completion report, status/diff/merge, guarded remove, cleanup/gc | Two writers in parallel worktrees, lead merges both |
-| **M5** | Plan approval (layers 1, 3, 4; layer 2 per adapter) + hooks with exit-2 semantics + failure policy | Failing `npm test` gate keeps the task open and tells the owner why |
+| **M5** | Light plan mode (`plan_approval: none|lead`, verdicts as messages) + hooks with exit-2 semantics + failure policy | Failing `npm test` gate keeps the task open and tells the owner why |
 | **M6** | Agent definitions, `teams.yaml`, `team start <template>`, `team save` | Round-trip: save a team, start it again |
-| **M7** | Board pane TUI + sidebar tokens + stall detection | Board usable as the only control surface |
+| **M7** | Board pane TUI (member strip, §10.3 keys) + sidebar tokens/labels | Board usable as the only control surface |
 | **M8** | MCP server front-end, opencode/gemini adapters, Windows check, docs, marketplace topic `herdr-plugin` | Published, installable via `herdr plugin install sonhal/herdr-teams` |
 
 ### Testing strategy
@@ -531,12 +660,15 @@ prepends `$HERDR_PLUGIN_ROOT/bin`, so a teammate can always call it, and
   trivial "echo agent" (a shell script that reports state through
   `pane report-agent`). This needs no API keys.
 
-## 13. Open questions and risks
+## 14. Open questions and risks
 
-1. **Mid-session permission switch** (plan → write) differs per CLI. It may
-   need a restart-with-resume. Spike this in M5.
-2. **Urgent delivery while working:** check that typed input queues safely for
-   each CLI and doesn't corrupt an in-progress tool approval.
+1. **Steering while working:** check per CLI and version that a prompt
+   typed during a turn is steered or queued safely, and doesn't corrupt an
+   in-progress tool approval. Otherwise use `interrupt-then-prompt` (M3 spike).
+2. **Stall false positives:** long silent test runs or builds look like no
+   progress on screen. Mitigate with generous defaults, team-activity
+   evidence, and advisories that never act on their own. Revisit after
+   dogfooding.
 3. **Prompt injection between agents:** message bodies are untrusted. The
    envelope says so, and gates and approvals never accept "approved" text
    relayed by a teammate. Only the lead's CLI identity can approve.
@@ -548,3 +680,6 @@ prepends `$HERDR_PLUGIN_ROOT/bin`, so a teammate can always call it, and
    taken from env.
 6. **Nested teams:** can teammates spawn helpers? Not in v1; Claude doesn't
    allow it either. A teammate can still use its CLI's own subagents.
+7. **pi-herdr-workers:** it was mentioned as a reference but isn't on npm or
+   the web. The closest matches are `pi-herdr-squad` and `pi-herd`. Waiting
+   on a link.
