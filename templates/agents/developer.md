@@ -1,6 +1,6 @@
 ---
 description: Implement the tasks on the board.
-worktree: dedicated
+worktree: auto
 plan_mode: true
 ---
 
