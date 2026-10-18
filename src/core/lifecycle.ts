@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { adapter } from '../adapters/index.js';
+import { adapter, KINDS } from '../adapters/index.js';
 import { HerdrClient, HerdrApiError, type PaneInfo } from '../herdr/index.js';
 import { Worktrees } from './worktrees.js';
 import { pluginRoot } from './paths.js';
@@ -28,6 +28,28 @@ export class Lifecycle {
     readonly env: NodeJS.ProcessEnv,
   ) {}
 
+  /**
+   * The agent CLI running in the calling pane, used when nothing names a kind.
+   * herdr 0.9.5 reports it as agent_info.agent with the same names as KINDS.
+   */
+  async currentKind(): Promise<string> {
+    const choose = `pass --kind ${KINDS.join('|')}`;
+    const pane = this.env.HERDR_PANE_ID;
+    if (!pane) throw new Error(`Not in a herdr pane; ${choose}`);
+    let running: string | undefined;
+    try {
+      running = (await this.client.agentGet(pane)).agent.agent;
+    } catch (error) {
+      if (!(error instanceof HerdrApiError)) throw error;
+    }
+    if (!running) throw new Error(`No agent runs in this pane; ${choose}`);
+    if (!KINDS.includes(running))
+      throw new Error(
+        `This pane runs ${running}, which herdr-teams cannot launch; ${choose}`,
+      );
+    return running;
+  }
+
   spawn(member: string, options: SpawnOptions) {
     return this.db.exclusive('lifecycle', () =>
       this.spawnMember(member, options),
@@ -47,7 +69,8 @@ export class Lifecycle {
         'lead',
       interactive: options.interactive ?? team.defaults?.interactive ?? false,
     };
-    const kind = options.kind ?? team.defaults?.kind ?? 'codex';
+    const kind =
+      options.kind ?? team.defaults?.kind ?? (await this.currentKind());
     const model = options.model ?? team.defaults?.model;
     const thinking = options.thinking ?? team.defaults?.thinking;
     const resolved = adapter(kind, model, thinking);

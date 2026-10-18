@@ -1,0 +1,16 @@
+# Built-in team templates. A template with the same name in
+# ~/.config/herdr-teams/teams.yaml or .herdr/teams.yaml replaces one of these.
+# No template names an agent kind: members run the lead's agent CLI unless
+# `team start --kind` or a role file says otherwise.
+dev:
+  description: Software development with a developer, a reviewer and a tester
+  members:
+    - { name: developer, agent: developer }
+    - { name: reviewer, agent: reviewer }
+    - { name: tester, agent: tester }
+research:
+  description: Two researchers and a synthesizer who merges their findings
+  members:
+    - { name: researcher-a, agent: researcher }
+    - { name: researcher-b, agent: researcher }
+    - { name: synthesizer, agent: synthesizer }

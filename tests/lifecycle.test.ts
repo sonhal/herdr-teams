@@ -97,7 +97,7 @@ it('retains launch failures and gives the lead arguments and captured output', a
       fake.env,
     );
     await expect(
-      lifecycle.spawn('alice', { prompt: 'test', model: 'bad' }),
+      lifecycle.spawn('alice', { kind: 'codex', prompt: 'test', model: 'bad' }),
     ).rejects.toThrow();
     expect(db.config().details!.alice!.ended).toBe('failed-to-launch');
     expect(db.inbox('lead')[0]!.body).toContain('launch output');
@@ -186,7 +186,7 @@ it('uses an overflow tab after four split members without stealing focus', async
   try {
     await new Lifecycle(db, new HerdrClient({ env: fake.env }), fake.env).spawn(
       'alice',
-      { prompt: 'test' },
+      { kind: 'codex', prompt: 'test' },
     );
     expect((await fake.calls())[0]).toContain('team:demo:2');
     expect((await fake.calls())[0]).toContain('--no-focus');

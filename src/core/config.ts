@@ -14,6 +14,7 @@ import { adapter } from '../adapters/index.js';
 import { Store, type Team } from './store.js';
 import { Lifecycle, type SpawnOptions } from './lifecycle.js';
 import { Tasks } from './tasks.js';
+import { pluginRoot } from './paths.js';
 
 export interface Definition {
   name?: string;
@@ -74,8 +75,11 @@ function write(path: string, text: string) {
     rmSync(temp, { force: true });
   }
 }
+export type TemplateSource = 'project' | 'global' | 'built-in';
 export class Config {
   readonly global: string;
+  /** Templates and roles shipped with the plugin; anything else overrides them. */
+  readonly builtin: string;
   constructor(
     readonly cwd: string,
     readonly env: NodeJS.ProcessEnv,
@@ -84,6 +88,15 @@ export class Config {
       env.XDG_CONFIG_HOME ?? join(homedir(), '.config'),
       'herdr-teams',
     );
+    this.builtin = join(pluginRoot(env), 'templates');
+  }
+  /** Lowest precedence first. */
+  private sources(): [TemplateSource, Record<string, unknown>][] {
+    return [
+      ['built-in', mapping(join(this.builtin, 'teams.yaml'))],
+      ['global', mapping(join(this.global, 'teams.yaml'))],
+      ['project', mapping(join(this.cwd, '.herdr', 'teams.yaml'))],
+    ];
   }
   definition(name: string): Definition {
     key(name);
@@ -92,6 +105,7 @@ export class Config {
       join(this.cwd, '.pi', 'agents'),
       join(this.cwd, '.claude', 'agents'),
       join(this.global, 'agents'),
+      join(this.builtin, 'agents'),
     ];
     const path = roots.map((root) => join(root, `${name}.md`)).find(existsSync);
     if (!path) throw new Error(`Agent definition not found: ${name}`);
@@ -143,22 +157,35 @@ export class Config {
       throw new Error('Invalid worktree mode');
     if (value.plan_approval && !['lead', 'none'].includes(value.plan_approval))
       throw new Error('Invalid plan approval');
-    adapter(value.kind ?? 'codex', value.model, value.thinking);
+    // Without a kind, model and thinking are checked when the kind is known at spawn.
+    if (value.kind !== undefined)
+      adapter(value.kind, value.model, value.thinking);
   }
   templates(): string[] {
     return [
-      ...new Set([
-        ...Object.keys(mapping(join(this.global, 'teams.yaml'))),
-        ...Object.keys(mapping(join(this.cwd, '.herdr', 'teams.yaml'))),
-      ]),
+      ...new Set(this.sources().flatMap(([, values]) => Object.keys(values))),
     ].sort();
+  }
+  /** Each template with the source that wins for it. */
+  catalog(): { name: string; source: TemplateSource; description?: string }[] {
+    const sources = new Map<string, TemplateSource>();
+    for (const [source, values] of this.sources())
+      for (const name of Object.keys(values)) sources.set(name, source);
+    return [...sources.keys()].sort().map((name) => {
+      const { description } = this.template(name);
+      return {
+        name,
+        source: sources.get(name)!,
+        ...(description ? { description } : {}),
+      };
+    });
   }
   template(name: string): Template {
     key(name);
-    const values = {
-      ...mapping(join(this.global, 'teams.yaml')),
-      ...mapping(join(this.cwd, '.herdr', 'teams.yaml')),
-    };
+    const values = Object.assign(
+      {},
+      ...this.sources().map(([, values]) => values),
+    ) as Record<string, unknown>;
     const raw = Object.hasOwn(values, name) ? values[name] : undefined;
     if (raw === undefined) throw new Error(`Unknown template: ${name}`);
     const value = Array.isArray(raw)
@@ -271,16 +298,31 @@ export class Config {
       ...member,
     };
   }
-  async start(db: Store, lifecycle: Lifecycle, name: string, lead: string) {
+  async start(
+    db: Store,
+    lifecycle: Lifecycle,
+    name: string,
+    lead: string,
+    kind?: string,
+  ) {
     const template = this.template(name);
     key(lead);
     if (template.members.some((m) => m.name === lead))
       throw new Error('Lead and teammate names must differ');
+    const defaults = { ...template.lead, ...template.defaults };
+    if (kind !== undefined) defaults.kind = kind;
+    // Resolve a missing kind before creating anything, so a failure leaves no team.
+    if (
+      defaults.kind === undefined &&
+      template.members.some((m) => this.resolve(m).kind === undefined)
+    )
+      defaults.kind = await lifecycle.currentKind();
+    if (defaults.kind !== undefined) adapter(defaults.kind);
     db.create(lead);
     db.bindSession(this.env.HERDR_SOCKET_PATH);
     db.updateTeam((team) => {
       team.repository_dir = this.cwd;
-      team.defaults = { ...template.lead, ...template.defaults };
+      team.defaults = defaults;
       if (template.defaults?.auto_claim !== undefined)
         team.auto_claim = template.defaults.auto_claim;
       if (template.plan_approval) team.plan_approval = template.plan_approval;
@@ -293,10 +335,7 @@ export class Config {
         team.workspace_id = this.env.HERDR_WORKSPACE_ID;
     });
     for (const member of template.members) {
-      const settings = this.resolve(member, {
-        ...template.lead,
-        ...template.defaults,
-      });
+      const settings = this.resolve(member, defaults);
       const options: SpawnOptions = {
         prompt:
           member.prompt ??

@@ -171,13 +171,17 @@ export function installBoardCommands(
   });
   const start = replace(actions, 'start-team', 'start-team [template]');
   start.action(async (template?: string) => {
-    const available = new Config(process.cwd(), env).templates();
+    const catalog = new Config(process.cwd(), env).catalog();
+    // Built-in templates are always present; only the user's own one is implied.
+    const own = catalog.filter((t) => t.source !== 'built-in');
     const selected =
       template ??
       env.HERDR_TEAMS_TEMPLATE ??
-      (available.length === 1 ? available[0] : undefined);
+      (own.length === 1 ? own[0]!.name : undefined);
     if (!selected)
-      throw new Error('Choose a template with team start <template>');
+      throw new Error(
+        `Choose a template with team start <template>: ${catalog.map((t) => t.name).join(', ')}`,
+      );
     const code = await runCliAsync(['team', 'start', selected], {
       version: program.version() ?? '0.1.0',
       env,

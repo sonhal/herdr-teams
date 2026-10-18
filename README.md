@@ -169,10 +169,27 @@ first argument and `PI_TEAM` set.
 
 ## Templates and agent definitions
 
+herdr-teams ships two templates. `dev` has a developer (own worktree, plans
+before coding), a reviewer and a tester; `research` has two researchers who
+write `research/<task>.md` and a synthesizer who merges them into
+`research/report.md`. `team templates` lists every template and where it comes
+from.
+
+```sh
+herdr-teams team templates
+herdr-teams team start dev --name app
+```
+
+A member's agent CLI comes from `spawn --kind`, then its role or template,
+then `team start --kind`, then the agent running in the pane that started it.
+The built-in templates name none, so a Claude lead gets Claude teammates. From
+a plain shell, or when that agent cannot be launched, pass `--kind` (`claude`,
+`codex`, `pi` or `opencode`).
+
 Put reusable roles in `.herdr/agents/<name>.md` with YAML frontmatter and a
 markdown instruction body. Project `.herdr/` definitions take precedence over
-`.pi/agents/`, `.claude/agents/` and global definitions in
-`~/.config/herdr-teams/agents/`.
+`.pi/agents/`, `.claude/agents/`, global definitions in
+`~/.config/herdr-teams/agents/` and the built-in roles.
 
 ```yaml
 ---
@@ -183,7 +200,8 @@ worktree: shared
 Review changes and report defects with file and line references.
 ```
 
-Define teams in `.herdr/teams.yaml` or `~/.config/herdr-teams/teams.yaml`:
+Define teams in `.herdr/teams.yaml` or `~/.config/herdr-teams/teams.yaml`; a
+template with a built-in name replaces the built-in one:
 
 ```yaml
 review:
