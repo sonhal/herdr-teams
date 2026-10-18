@@ -51,7 +51,7 @@ it, and see its state in herdr's sidebar.
   settings. Hard guarantees are kept to the few places where they are cheap
   and clearly useful: task-claim locking, quality-gate exit codes, and never
   typing into an agent that is waiting on a permission prompt.
-- **Supervision is advisory.** The plugin reports stalls and failures to the
+- **Supervision is advisory.** The plugin reports failures to the
   lead and the user, and it offers tools to correct a running agent. It never
   kills, restarts or retries an agent on its own.
 - **Honest state.** Every teammate is always in one well-defined state, and
@@ -67,8 +67,8 @@ it, and see its state in herdr's sidebar.
 | Coordination | Persistent task board with statuses and dependencies; file-locked claiming and auto-claim; plan mode; quality-gate hooks |
 | Communication | Direct messages, broadcast, reports to the lead; pushed delivery when idle; urgent messages while working |
 | Worktrees | Per-teammate or per-task git worktrees managed by the lead; completion reports; explicit merge and guarded cleanup |
-| Supervision | Live state from herdr, time in state, stall advisories, honest end states; peek, steer, interrupt with context kept, release task, kill |
-| Visibility | Board pane, supervisor pane, herdr sidebar labels, event log |
+| Supervision | Live state from herdr, time in state, honest end states; peek, steer, interrupt with context kept, release task, kill |
+| Visibility | Board pane, herdr sidebar labels, event log |
 
 ### Not in v1
 
@@ -93,7 +93,6 @@ it, and see its state in herdr's sidebar.
 | **Template** | A team definition in `teams.yaml`: members, settings and optional seed tasks. |
 | **Task** | A unit of work on the board, with a status, an owner, dependencies and an optional plan, worktree and gate. |
 | **Inbox** | A member's append-only message log. |
-| **Supervisor** | One small process per team, in its own pane, that receives herdr events and runs time-based checks. |
 | **Board** | A pane with a live task board and member strip, used by the human. |
 
 ## 4. Architecture
@@ -102,12 +101,12 @@ it, and see its state in herdr's sidebar.
 ┌──────────────────────────── herdr server ─────────────────────────────┐
 │ workspace "myrepo"                                                    │
 │   tab "main":       [ lead (claude) ]                                 │
-│   tab "team:auth":  [ alice (codex) ][ bob (pi) ][ supervisor ]       │
+│   tab "team:auth":  [ alice (codex) ][ bob (pi) ]                      │
 │ workspace "myrepo ⎇ team/auth/carol"   (git worktree, grouped)        │
 │   tab 1:            [ carol (claude) ]                                │
 └──────▲──────────────────────────────▲─────────────────────────────────┘
-       │ herdr CLI ($HERDR_BIN_PATH)  │ events.subscribe (supervisor)
-       │                              │ [[events]] hooks (fallback)
+       │ herdr CLI ($HERDR_BIN_PATH)  │ plugin event hooks
+       │                              │ [[events]] hooks
 ┌──────┴──────────────────────────────┴─────────────────────────────────┐
 │ herdr-teams (TypeScript, Node ≥ 20)                                   │
 │   cli/         `herdr-teams <command>`: used by the lead, teammates,  │
@@ -115,7 +114,7 @@ it, and see its state in herdr's sidebar.
 │   core/        store · tasks · inbox · plans · gates · worktrees      │
 │   herdr/       typed wrapper around the herdr CLI (JSON in/out)       │
 │   adapters/    claude · codex · pi (· opencode later)                 │
-│   supervisor/  event subscriber, delivery, advisories, clock          │
+│   runtime/     event hooks, delivery, lifecycle, sidebar               │
 │   board/       task-board TUI                                         │
 └────────────────────────────────┬──────────────────────────────────────┘
                                  │ files = single source of truth
@@ -133,7 +132,6 @@ it, and see its state in herdr's sidebar.
   swap in for tests.
 - **Adapters.** Turn the shared settings (model, thinking level, exit,
   steering) into each agent CLI's arguments and keys (§13).
-- **Supervisor.** A long-running process in a plugin pane (§11.5).
 - **Board.** A TUI in a plugin pane (§12).
 - **Plugin manifest.** Wires the startup hook, event hooks, actions and
   panes into herdr (§16).
@@ -186,9 +184,8 @@ teams/<team>/
 team) does the following:
 
 1. Creates the team directory and records the caller as lead.
-2. Opens the supervisor pane, unless `supervisor.mode: off`.
-3. Spawns each member (§5.2).
-4. Creates any seed tasks from the template.
+2. Spawns each member (§5.2).
+3. Creates any seed tasks from the template.
 
 ### 5.2 Spawning a teammate
 
@@ -327,15 +324,11 @@ approved something counts for nothing; only the real commands change state.
 
 ### 7.3 Event paths and reconciliation
 
-- **Primary:** the team's supervisor holds a long-lived
-  `events.subscribe` connection and reacts within milliseconds (§11.5).
-- **Fallback:** the manifest's `[[events]]` hooks run the same handler when
-  the supervisor isn't running.
-- The handler is idempotent: messages have ids and each inbox has a delivered
-  cursor, so a double trigger is harmless.
-- **Reconciliation:** events can be lost, so waiting mail is also flushed on
-  every `herdr-teams` call, on the supervisor's periodic tick and after it
-  resubscribes, and by the startup hook after a herdr restart.
+- The manifest's `[[events]]` hooks reconcile live agent state and deliver mail.
+- Inbox cursors and completion sequences coalesce repeated events.
+- A delivery lease serializes concurrent hooks; each invocation rechecks live state.
+- Successful commands and the startup hook retry pending delivery. There is no
+  periodic reconciliation or scheduled wakeup; see issue #32.
 
 ### 7.4 Reports to the lead
 
@@ -490,7 +483,6 @@ restored idle.
 | `working` / `idle` / `blocked` | as reported by herdr |
 | `waiting-plan` | idle after submitting a plan, with `plan_approval: lead` |
 | `interrupted` | its turn was interrupted and it hasn't started a new one |
-| `stalled` | a no-progress advisory is active (§11.3) |
 | *end state* | one of §11.2 |
 
 ### 11.2 End states
@@ -506,35 +498,13 @@ Every teammate ends in exactly one end state, reported once to the lead:
 | `killed` | `herdr-teams kill` | — |
 
 Exits are detected from events: the agent disappearing from its pane,
-`pane.exited` or `pane.closed`. A teammate that has exited is never reported
-as stalled.
+`pane.exited` or `pane.closed`. A teammate that has exited retains its classified end state.
 
-### 11.3 Stall advisories
+### 11.3 Progress checks
 
-A stall means **no progress**, not a long run time. Progress evidence is:
-
-1. a herdr state change;
-2. team activity by the member: a `herdr-teams` call, a message or a task
-   update;
-3. a screen change. The supervisor periodically hashes the last 40 lines of
-   output; spinner-only changes don't count.
-
-| Advisory | Condition | Default |
-|---|---|---|
-| `no-progress` | `working` with no progress evidence | 10 min |
-| `needs-input` | `blocked` on a permission or question prompt | 2 min |
-| `unclassified` | herdr state `unknown` | 5 min |
-
-- Each advisory goes to the lead once per episode, followed by a `recovered`
-  notice when progress resumes. It describes what was observed and suggests
-  peek, nudge, interrupt or kill.
-- `needs-input` also raises a herdr notification, because a human should
-  answer permission prompts, not the lead.
-- **Interactive members stay quiet:** if a human recently focused the
-  member's pane, or the member is marked `interactive: true`, advisories
-  appear only on the board.
-- With `on_no_progress: nudge`, the supervisor first sends the teammate one
-  status-check prompt, and tells the lead only if it doesn't help.
+The lead uses completion reports, task state and `peek` to check progress.
+Event hooks have no clock and do not sample screens or automatically nudge
+teammates. Scheduled lead wakeups are tracked in issue #32.
 
 ### 11.4 Correcting a running teammate
 
@@ -557,44 +527,16 @@ into a `blocked` agent.
 interrupt, release or kill another member; urgent delivery can press Esc in
 the recipient's pane.
 
-### 11.5 The supervisor
-
-Time-based checks need a long-running process, and herdr plugins run those
-in panes. Each team therefore has one supervisor, `herdr-teams supervise`, in
-a plugin pane with a one-line status (`supervisor · 3 members · 1 advisory`).
-
-- **Events:** it subscribes over herdr's socket to
-  `pane.agent_status_changed`, `pane.exited`, `pane.closed`, `pane.moved` and
-  `pane.focused` for member panes. If herdr reports `events_lost`, it
-  resubscribes and reconciles from a fresh `session.snapshot`.
-- **Clock:** every `tick_seconds` (default 30) it checks advisories, samples
-  screens and flushes waiting mail.
-- **Configuration:** a team setting that is on by default and included in
-  every example template (§14.2):
-
-  | `supervisor.mode` | Behaviour |
-  |---|---|
-  | `tab` (default) | its own tab, keeping the lead's and team tabs free of it |
-  | `pane` | a split beside the lead |
-  | `off` | no supervisor: delivery and state tracking run through the event hooks, and there are no stall advisories |
-
-- **Resilience:** if the supervisor pane is closed, delivery and state
-  tracking continue through the event hooks; only stall advisories pause, and
-  the board shows "supervisor offline". `herdr-teams supervise --team <t>`
-  reopens it, and the startup hook reopens it after a herdr restart.
-
 ## 12. Board and observability
 
 - **Board pane** (`herdr-teams board`): a live task board with a column per
   status. It shows owners, dependencies, branches, unread counts and recent
-  messages. A member strip shows each member's state, time in state and
-  advisories (`⚠ no-progress 12m`, `✋ needs-input`). Keys: the §11.4 actions,
+  messages. A member strip shows each member's state, time in state and unread mail. Keys: the §11.4 actions,
   plus assign, reopen, and plan approve or reject. The board only reads the
   team's files, so it can be opened and closed freely.
 - **herdr sidebar:** each member's pane shows a display name, a state label
-  (e.g. "#12 rate limiter") and tokens (`$task`, `$team`, `$branch`,
-  `$advice`). The team's workspace shows a summary token
-  (`$team_status = "3/7 done · 1 stalled"`).
+  (e.g. "#12 rate limiter") and tokens (`$task`, `$team`, `$branch`). The team's workspace shows a summary token
+  (`$team_status = "3/7 done · 1 blocked"`).
 - **`herdr-teams status [name]`:** the same information as text or JSON, for
   the lead.
 - **`herdr-teams log [--follow]`:** the event log as an audit trail.
@@ -653,13 +595,6 @@ auth-squad:
     failure_action: reopen_followup
     max_reopens: 2
     followup_owner: member
-  supervisor:
-    mode: tab                   # tab | pane | off
-    tick_seconds: 30
-    no_progress_minutes: 10     # 0 disables an advisory
-    needs_input_minutes: 2
-    unknown_minutes: 5
-    on_no_progress: notify      # notify | nudge
   members:
     - name: alice
       agent: builder
@@ -685,7 +620,6 @@ thinking: high
 plan_mode: false
 worktree: shared        # shared | dedicated | auto
 auto_claim: true
-interactive: false      # true: advisories go to the board only
 tools: read, bash       # advisory; applied where the CLI supports it
 ---
 Review changes only. Report findings with file:line references ...
@@ -703,7 +637,7 @@ Unknown frontmatter keys are ignored.
 | Messages | `msg send [--urgent]`, `broadcast`, `report`, `inbox` |
 | Plans | `plan submit`, `plan approve`, `plan reject` |
 | Worktrees | `worktree create\|request\|approve\|status\|diff\|merge\|remove` |
-| Panes | `board`, `supervise` |
+| Panes | `board` |
 
 Every command accepts `--team` (defaulting to `HERDR_TEAMS_TEAM`) and `--json`.
 
@@ -721,10 +655,10 @@ command = ["npm", "ci"]
 [[build]]
 command = ["npm", "run", "build"]
 
-[[startup]]                          # reconcile and reopen supervisors after restart
+[[startup]]                          # reconcile teams after restart
 command = ["node", "dist/bin/herdr-teams.js", "_hook", "startup"]
 
-[[events]]                           # fallback path when no supervisor runs
+[[events]]                           # deliver mail and track lifecycle changes
 on = "pane.agent_status_changed"
 command = ["node", "dist/bin/herdr-teams.js", "_hook", "event"]
 [[events]]
@@ -755,11 +689,6 @@ title = "Team board"
 placement = "split"
 command = ["node", "dist/bin/herdr-teams.js", "board"]
 
-[[panes]]
-id = "supervisor"
-title = "Team supervisor"
-placement = "split"
-command = ["node", "dist/bin/herdr-teams.js", "supervise"]
 ```
 
 Spawned panes get `$HERDR_PLUGIN_ROOT/bin` prepended to `PATH`, so every
@@ -777,7 +706,7 @@ version herdr reports as installed.
 | M1 | Core store: teams, tasks with dependencies and claim locking, inboxes, event log; CLI `team`, `task`, `msg` | 20 concurrent claimers: exactly one wins |
 | M2 | Spawning and lifecycle: layout, `agent start`, claude/codex/pi adapters, labels, bootstrap, shutdown, kill, done, launch-failure reports | A Claude lead spawns Codex and pi teammates in a real herdr session |
 | M3 | Delivery: event hooks, batched delivery, reports to the lead, auto-claim, reconciliation | An idle teammate receives a message within ~1 s, with no polling |
-| M4 | Supervision: supervisor pane, state log, end states, advisories, peek, steer, interrupt, release | A frozen test agent produces exactly one advisory and one `recovered`; an interrupted teammate continues with its context |
+| M4 | Team control: state log, end states, peek, steer, interrupt, release | An interrupted teammate continues with its context |
 | M5 | Worktrees: modes, requests, creation and move, completion report, status/diff/merge, guarded removal, cleanup | Two writers in parallel worktrees; the lead merges both |
 | M6 | Plan mode and quality gates: plan submit/approve/reject, hooks with exit-2 semantics, per-task gates, failure policy | A failing `npm test` gate keeps the task open and tells the owner why |
 | M7 | Templates and definitions: `teams.yaml`, agent definitions, `team start`, `team save` | Save a team, start it again, get the same team |
@@ -801,15 +730,14 @@ version herdr reports as installed.
    dialog. Use interrupt-then-prompt where it isn't safe. (M4)
 2. **Detecting agent exit.** When an agent exits, its pane falls back to the
    shell and `pane.exited` doesn't fire. Confirm that herdr emits a usable
-   event when the agent disappears; otherwise detect it with `agent get` on
-   the supervisor tick. (M2)
+   event when the agent disappears; startup and subsequent commands also
+   reconcile the live agent list. (M2)
 3. **Launch robustness.** Test `agent start` against a slow shell rc,
    direnv, and a bad `--model`, to make sure failures are reported rather than
    silent. (M2)
-4. **Stall false positives.** Long silent builds or test runs look like no
-   progress. Mitigated by generous defaults, team-activity evidence, and
-   advisories never acting on their own. Revisit after real use.
-5. **Event-hook cost.** Without a supervisor, each state change starts a
+4. **Idle teams.** Hooks have no clock. Scheduled lead wakeups are tracked
+   in issue #32.
+5. **Event-hook cost.** Each state change starts a
    Node process. Measure it; if needed, exit early when the pane isn't a team
    member.
 6. **Prompt injection between agents.** Message bodies are untrusted and

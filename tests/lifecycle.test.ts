@@ -16,7 +16,7 @@ import { runCliAsync } from '../src/cli/index.js';
 import { Lifecycle } from '../src/core/lifecycle.js';
 import { Store, newAgentName } from '../src/core/store.js';
 import { HerdrClient } from '../src/herdr/index.js';
-import { syncMembers } from '../src/supervisor/lifecycle.js';
+import { syncMembers } from '../src/runtime/lifecycle.js';
 import { agent, pane } from './helpers/fixtures.js';
 import { fakeHerdr, jsonReply } from './helpers/fake-herdr.js';
 const homes: string[] = [];

@@ -43,11 +43,12 @@ describe('CLI', () => {
       expect(result.stdout).toContain('--json');
     },
   );
-  it('registers the supervise command the supervisor pane runs', () => {
+  it('keeps the board without a supervisor command', () => {
     const names = createCli({ version: '0.1.0', env: {} }).commands.map((c) =>
       c.name(),
     );
-    expect(names).toContain('supervise');
+    expect(names).not.toContain('supervise');
+    expect(names).toContain('board');
     expect(names).toContain('cleanup');
   });
   it('prints the supplied package version', () => {

@@ -1,4 +1,11 @@
-import { appendFileSync, mkdtempSync, rmSync } from 'node:fs';
+import {
+  appendFileSync,
+  mkdtempSync,
+  rmSync,
+  mkdirSync,
+  writeFileSync,
+  utimesSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -7,7 +14,7 @@ import { runCliAsync } from '../src/cli/index.js';
 import { MAX_MESSAGE_BYTES, Store } from '../src/core/store.js';
 import { Hooks } from '../src/core/hooks.js';
 import { HerdrClient } from '../src/herdr/index.js';
-import { reconcile } from '../src/supervisor/delivery.js';
+import { reconcile } from '../src/runtime/delivery.js';
 import { agent } from './helpers/fixtures.js';
 import { fakeHerdr, jsonReply } from './helpers/fake-herdr.js';
 
@@ -22,9 +29,6 @@ function setup() {
   homes.push(home);
   const db = new Store(home, randomUUID());
   db.create('lead', 'demo');
-  db.updateTeam((team) => {
-    team.supervisor = { mode: 'off' };
-  });
   db.addMember('alice');
   return db;
 }
@@ -233,7 +237,6 @@ function team(home: string, name: string, socket: string) {
   const db = new Store(home, randomUUID());
   db.create('lead', name);
   db.updateTeam((config) => {
-    config.supervisor = { mode: 'off' };
     config.herdr_socket = socket;
     config.lead_pane_id = idle.pane_id;
   });
@@ -464,8 +467,6 @@ it('creates a team from an ordinary herdr pane in the hooks’ state home', asyn
       herdr_socket: 'session-a.sock',
       lead_pane_id: 'w1:p1',
     });
-    // No live members yet: an empty team does not hold a supervisor pane.
-    expect(new Store(state, id).config().supervisor).toBeUndefined();
     expect(await fake.calls()).toHaveLength(1);
   } finally {
     await fake.cleanup();
@@ -557,6 +558,153 @@ it('labels system notices as herdr-teams notices without a reply hint', async ()
     expect(prompt).toContain('alice: crashed');
     expect(prompt).not.toContain('teammate, not the user');
     expect(prompt).not.toContain('Reply:');
+  } finally {
+    await fake.cleanup();
+  }
+});
+
+it('reconciles an idle event that arrives while delivery holds the lease', async () => {
+  const db = setup();
+  db.send('lead', 'alice', 'waiting');
+  let release!: () => void;
+  let started!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let lists = 0;
+  let prompts = 0;
+  const client = new HerdrClient({
+    runner: async (_bin, argv) => {
+      let result: unknown;
+      if (argv[1] === 'list') {
+        lists++;
+        if (lists === 1) {
+          started();
+          await blocked;
+        }
+        result = {
+          type: 'agent_list',
+          agents: [{ ...idle, agent_status: lists === 1 ? 'working' : 'idle' }],
+        };
+      } else if (argv[1] === 'get')
+        result = { type: 'agent_info', agent: idle };
+      else {
+        prompts++;
+        result = { type: 'agent_prompted', agent: idle };
+      }
+      return {
+        stdout: JSON.stringify({ id: 'test', result }),
+        stderr: '',
+        exitCode: 0,
+      };
+    },
+  });
+  const first = reconcile(db, client);
+  await entered;
+  const second = reconcile(db, client);
+  // The first pass holds a working snapshot; the later hook must recheck it.
+  release();
+  await Promise.all([first, second]);
+  expect(lists).toBe(2);
+  expect(prompts).toBe(1);
+  expect(db.deliveryState().cursors.alice).toBe(db.inbox('alice').at(-1)!.id);
+});
+
+it('event hooks wake the lead with one completion report across repeated events', async () => {
+  const db = setup();
+  db.bindSession('hook-session.sock');
+  db.updateTeam((team) => {
+    team.lead_pane_id = 'w1:p1';
+  });
+  db.updateTeam((team) => {
+    team.details = {
+      alice: { kind: 'codex', pane_id: idle.pane_id, state: 'working' },
+    };
+  });
+  const lead = { ...idle, name: 'current-lead', pane_id: 'w1:p1' };
+  const completed = { ...idle, completion_seq: 1 };
+  const agents = jsonReply({ type: 'agent_list', agents: [lead, completed] });
+  // herdr v0.9.5: lifecycle hook payload uses pane_id; metadata commands are quiet.
+  const fake = await fakeHerdr([
+    agents,
+    { stdout: 'Finished the task' },
+    jsonReply({ type: 'agent_info', agent: lead }),
+    jsonReply({ type: 'agent_prompted', agent: lead }),
+    { stdout: '' },
+    agents,
+  ]);
+  try {
+    const options = {
+      version: 'test',
+      env: {
+        ...fake.env,
+        HERDR_TEAMS_HOME: db.home,
+        HERDR_SOCKET_PATH: 'hook-session.sock',
+        HERDR_PLUGIN_EVENT_JSON: JSON.stringify({
+          event: 'pane_agent_status_changed',
+          data: { pane_id: idle.pane_id },
+        }),
+      },
+      stdout: () => {},
+      stderr: () => {},
+    };
+    expect(await runCliAsync(['_hook', 'event'], options)).toBe(0);
+    expect(await runCliAsync(['_hook', 'event'], options)).toBe(0);
+    expect(db.inbox('lead').filter((m) => m.kind === 'report')).toHaveLength(1);
+    const calls = await fake.calls();
+    const prompts = calls.filter((c) => c[1] === 'prompt');
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]![2]).toBe(lead.pane_id);
+    expect(prompts[0]![3]).toContain('Finished the task');
+    expect(calls.some((c) => c[0] === 'plugin')).toBe(false);
+  } finally {
+    await fake.cleanup();
+  }
+});
+
+it('ignores events for unrelated panes before querying herdr', async () => {
+  const db = setup();
+  db.bindSession('hook-session.sock');
+  const fake = await fakeHerdr([]);
+  try {
+    expect(
+      await runCliAsync(['_hook', 'event'], {
+        version: 'test',
+        env: {
+          ...fake.env,
+          HERDR_TEAMS_HOME: db.home,
+          HERDR_SOCKET_PATH: 'hook-session.sock',
+          HERDR_PLUGIN_EVENT_JSON: JSON.stringify({
+            event: 'pane.closed',
+            data: { pane_id: 'w9:p9' },
+          }),
+        },
+      }),
+    ).toBe(0);
+    expect(await fake.calls()).toEqual([]);
+  } finally {
+    await fake.cleanup();
+  }
+});
+
+it('recovers an abandoned delivery lease and completes the pending pass', async () => {
+  const db = setup();
+  const lease = join(db.root, 'locks', 'delivery');
+  mkdirSync(lease);
+  writeFileSync(join(lease, 'pid'), '99999999');
+  const old = new Date(Date.now() - 61000);
+  utimesSync(lease, old, old);
+  db.send('lead', 'alice', 'after recovery');
+  const fake = await fakeHerdr([list(), get, prompted]);
+  try {
+    await reconcile(db, new HerdrClient({ env: fake.env }));
+    expect(db.deliveryState().cursors.alice).toBe(db.inbox('alice').at(-1)!.id);
+    expect((await fake.calls()).filter((c) => c[1] === 'prompt')).toHaveLength(
+      1,
+    );
   } finally {
     await fake.cleanup();
   }

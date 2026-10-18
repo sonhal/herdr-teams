@@ -6,7 +6,7 @@ import { afterEach, expect, it } from 'vitest';
 import { Store } from '../src/core/store.js';
 import { snapshot, renderBoard } from '../src/board/model.js';
 import { boardAction } from '../src/board/terminal.js';
-import { syncSidebar } from '../src/supervisor/sidebar.js';
+import { syncSidebar } from '../src/runtime/sidebar.js';
 import { runCliAsync } from '../src/cli/index.js';
 import { HerdrClient } from '../src/herdr/index.js';
 import { fakeHerdr } from './helpers/fake-herdr.js';
@@ -30,7 +30,7 @@ function setup() {
   });
   return db;
 }
-it('renders task states, owners, dependencies, unread mail and offline supervision', () => {
+it('renders task states, owners, dependencies, unread mail without supervision', () => {
   const db = setup();
   const task = db.add('Review');
   db.change(task.id, 'assign', 'lead', 'alice');
@@ -42,7 +42,7 @@ it('renders task states, owners, dependencies, unread mail and offline supervisi
     seconds: 60,
     unread: 2,
   });
-  expect(text).toContain('supervisor offline');
+  expect(text).not.toContain('supervisor');
   expect(text).toContain('#1 Review');
   expect(text).toContain('owner alice');
 });
@@ -110,7 +110,7 @@ it('updates sidebar labels only when their content changes', async () => {
     await syncSidebar(db, client);
     await syncSidebar(db, client);
     expect(await fake.calls()).toHaveLength(2);
-    db.patchMember('alice', { advisory: 'needs-input' });
+    db.patchMember('alice', { state: 'blocked' });
     await syncSidebar(db, client);
     expect(await fake.calls()).toHaveLength(4);
   } finally {

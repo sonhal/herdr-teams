@@ -65,35 +65,10 @@ export async function reconcile(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   const lease = join(db.root, 'locks', 'delivery');
-  try {
-    await mkdir(lease);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-    const recovery = join(db.root, 'locks', 'delivery-recovery');
-    try {
-      await mkdir(recovery);
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code === 'EEXIST') return;
-      throw cause;
-    }
-    // A killed hook must not prevent delivery after a restart.
-    try {
-      if (Date.now() - (await stat(lease)).mtimeMs < 60000) return;
-      const pid = Number(await readFile(join(lease, 'pid'), 'utf8'));
-      if (!Number.isSafeInteger(pid) || pid <= 0) return;
-      try {
-        process.kill(pid, 0);
-        return;
-      } catch (cause) {
-        if ((cause as NodeJS.ErrnoException).code !== 'ESRCH') return;
-      }
-      await rm(lease, { recursive: true, force: true });
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause;
-    } finally {
-      await rm(recovery, { recursive: true, force: true });
-    }
-    return;
+  const deadline = Date.now() + 10000;
+  while (!(await acquireDeliveryLease(lease, db))) {
+    if (Date.now() >= deadline) throw new Error('Delivery is busy; retry');
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
   try {
     await writeFile(join(lease, 'pid'), String(process.pid));
@@ -306,5 +281,42 @@ export async function reconcile(
       throw new Error(failures.map((e) => (e as Error).message).join('; '));
   } finally {
     await rm(lease, { recursive: true, force: true });
+  }
+}
+
+async function acquireDeliveryLease(
+  lease: string,
+  db: Store,
+): Promise<boolean> {
+  try {
+    await mkdir(lease);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    const recovery = join(db.root, 'locks', 'delivery-recovery');
+    try {
+      await mkdir(recovery);
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code === 'EEXIST') return false;
+      throw cause;
+    }
+    // A killed hook must not prevent delivery after a restart.
+    try {
+      if (Date.now() - (await stat(lease)).mtimeMs < 60000) return false;
+      const pid = Number(await readFile(join(lease, 'pid'), 'utf8'));
+      if (!Number.isSafeInteger(pid) || pid <= 0) return false;
+      try {
+        process.kill(pid, 0);
+        return false;
+      } catch (cause) {
+        if ((cause as NodeJS.ErrnoException).code !== 'ESRCH') return false;
+      }
+      await rm(lease, { recursive: true, force: true });
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause;
+    } finally {
+      await rm(recovery, { recursive: true, force: true });
+    }
+    return false;
   }
 }

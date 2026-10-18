@@ -94,8 +94,8 @@ herdr-teams board            # interactive; use board --once for a snapshot
 ```
 
 An agent blocked on a permission or question prompt must have it answered in
-its pane before steer or interrupt. Supervisor advisories inform you; they
-never restart anyone.
+its pane before steer or interrupt. Completion reports wake an idle lead;
+use task state and peek to check progress. There is no periodic stall detection.
 
 Worktrees:
 
@@ -156,7 +156,6 @@ Frontmatter keys:
 | `plan_approval` | `lead` (default) or `none`                       |
 | `worktree`      | `shared` (default), `dedicated`, `auto`          |
 | `auto_claim`    | boolean; claim the next free task when idle      |
-| `interactive`   | boolean; silences supervisor advisories          |
 
 Unknown keys are ignored. Invalid values (bad kind, thinking with `opencode`)
 fail when the definition is loaded.
@@ -179,12 +178,6 @@ feature:
   defaults: { kind: codex, thinking: medium }
   plan_approval: lead # or none
   worktree_requests: lead # or auto
-  supervisor:
-    mode: tab # tab (default), pane (split beside the lead) or off
-    tick_seconds: 30
-    no_progress_minutes: 10 # 0 disables an advisory
-    needs_input_minutes: 2
-    unknown_minutes: 5
   hooks:
     failure_action: reopen # warn, reopen, followup, reopen_followup
     max_reopens: 3

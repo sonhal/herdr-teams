@@ -1,10 +1,9 @@
 import { Command } from 'commander';
 import { Store, clip } from '../core/store.js';
 import { HerdrClient } from '../herdr/index.js';
-import { supervise, ensureSupervisor } from '../supervisor/runtime.js';
 import { readSelectedIdentity } from './identity.js';
 
-export function installSupervisionCommands(
+export function installControlCommands(
   program: Command,
   env: NodeJS.ProcessEnv,
   output: (text: string) => void,
@@ -64,7 +63,7 @@ export function installSupervisionCommands(
     if (current.agent_status === 'blocked')
       throw new Error('Agent is blocked; answer its prompt first');
     await client.sendKeys(details.pane_id, 'esc');
-    db.patchMember(member, { interrupted: true, progress_at: Date.now() });
+    db.patchMember(member, { interrupted: true });
     const then = interrupt.opts<{ then?: string }>().then;
     if (then) db.send(actor, member, clip(then));
     db.event('member.interrupted', { member });
@@ -101,7 +100,7 @@ export function installSupervisionCommands(
           'Owner is blocked; answer its prompt before releasing the task',
         );
       await client.sendKeys(member.pane_id, 'esc');
-      db.patchMember(owner!, { interrupted: true, progress_at: Date.now() });
+      db.patchMember(owner!, { interrupted: true });
     }
     const currentTask = db.task(id);
     if (currentTask.owner !== owner || currentTask.status !== task.status)
@@ -116,23 +115,5 @@ export function installSupervisionCommands(
         ),
       );
     output(JSON.stringify(released) + '\n');
-  });
-  const command = replace('supervise', 'supervise');
-  command.action(async () => {
-    const { db, client } = context(command, true);
-    if (env.HERDR_PLUGIN_ENTRYPOINT_ID !== 'supervisor') {
-      await ensureSupervisor(db, client);
-      return;
-    }
-    const controller = new AbortController();
-    const stop = () => controller.abort();
-    process.once('SIGINT', stop);
-    process.once('SIGTERM', stop);
-    try {
-      await supervise(db, client, env, controller.signal, output);
-    } finally {
-      process.removeListener('SIGINT', stop);
-      process.removeListener('SIGTERM', stop);
-    }
   });
 }

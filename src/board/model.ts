@@ -1,5 +1,3 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { Store } from '../core/store.js';
 export function plain(value: string): string {
@@ -23,15 +21,13 @@ export function snapshot(db: Store, now = Date.now()) {
       .filter((m) => !acknowledged.has(m.id)).length;
     const state =
       details?.ended ??
-      (details?.advisory === 'no-progress'
-        ? 'stalled'
-        : details?.interrupted && details.state !== 'working'
-          ? 'interrupted'
-          : owned.some(
-                (t) => t.status === 'planning' && t.plan?.verdict === 'pending',
-              )
-            ? 'waiting-plan'
-            : (details?.state ?? 'unknown'));
+      (details?.interrupted && details.state !== 'working'
+        ? 'interrupted'
+        : owned.some(
+              (t) => t.status === 'planning' && t.plan?.verdict === 'pending',
+            )
+          ? 'waiting-plan'
+          : (details?.state ?? 'unknown'));
     return {
       name,
       state,
@@ -42,27 +38,10 @@ export function snapshot(db: Store, now = Date.now()) {
       unread,
       tasks: owned.map((t) => t.id),
       branch: details?.worktree?.branch,
-      advisory: details?.advisory ?? null,
     };
   });
-  let online = false;
-  const owner = join(db.root, 'locks', 'supervisor', 'owner.json');
-  if (existsSync(owner))
-    try {
-      const { pid } = JSON.parse(readFileSync(owner, 'utf8')) as {
-        pid: number;
-      };
-      if (Number.isSafeInteger(pid) && pid > 0) {
-        process.kill(pid, 0);
-        online = true;
-      }
-    } catch {
-      /* An exited supervisor is offline. */
-    }
   return {
     name: team.name,
-    supervisor:
-      team.supervisor?.mode === 'off' ? 'off' : online ? 'online' : 'offline',
     members,
     tasks,
     messages: db.inbox(team.lead).slice(-5),
@@ -95,14 +74,10 @@ export function renderBoard(
   const columns = statuses.map((status) =>
     data.tasks.filter((t) => t.status === status),
   );
-  const lines = [
-    `${data.name} · supervisor ${data.supervisor}`,
-    '',
-    'MEMBERS (tab switches focus)',
-  ];
+  const lines = [plain(data.name), '', 'MEMBERS (tab switches focus)'];
   for (const [index, member] of data.members.entries())
     lines.push(
-      `${focus === 'members' && index === selectedMember ? '>' : ' '} ${plain(member.name)} · ${member.state} ${member.seconds}s · unread ${member.unread}${member.advisory ? ` · ${member.advisory}` : ''}${member.branch ? ` · ${plain(member.branch)}` : ''}`,
+      `${focus === 'members' && index === selectedMember ? '>' : ' '} ${plain(member.name)} · ${member.state} ${member.seconds}s · unread ${member.unread}${member.branch ? ` · ${plain(member.branch)}` : ''}`,
     );
   lines.push('', statuses.map(cell).join(''));
   const count = Math.max(0, ...columns.map((c) => c.length));

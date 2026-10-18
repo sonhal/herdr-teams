@@ -10,15 +10,12 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { createServer } from 'node:net';
 import { afterEach, expect, it } from 'vitest';
 import { Store, newAgentName } from '../src/core/store.js';
 import { Lifecycle } from '../src/core/lifecycle.js';
 import { HerdrClient } from '../src/herdr/index.js';
-import { reconcile } from '../src/supervisor/delivery.js';
-import { checkAdvisories, screenHash } from '../src/supervisor/advisories.js';
-import { applyEvent } from '../src/supervisor/events.js';
-import { supervise } from '../src/supervisor/runtime.js';
+import { reconcile } from '../src/runtime/delivery.js';
+import { applyEvent } from '../src/runtime/events.js';
 import { runCliAsync } from '../src/cli/index.js';
 import { agent, pane } from './helpers/fixtures.js';
 import { fakeHerdr, jsonReply } from './helpers/fake-herdr.js';
@@ -32,9 +29,6 @@ function setup() {
   homes.push(home);
   const db = new Store(home, randomUUID());
   db.create('lead', 'demo');
-  db.updateTeam((t) => {
-    t.supervisor = { mode: 'off' };
-  });
   db.reserveMember('alice', {
     kind: 'claude',
     pane_id: pane.pane_id,
@@ -160,30 +154,6 @@ it('reports every new completion after a member respawns', async () => {
   }
   expect(db.inbox('lead').filter((m) => m.kind === 'report')).toHaveLength(4);
   expect(db.deliveryState().idle_hooks!.alice).toBe(3);
-});
-
-it('saves advisories before notification failure and continues to the next member', async () => {
-  const db = setup();
-  const h = harness();
-  h.setOutput('unchanged');
-  h.failNotification();
-  for (const name of ['alice', 'bob']) {
-    if (name === 'bob')
-      db.reserveMember(name, {
-        kind: 'claude',
-        state: 'blocked',
-        pane_id: 'w1:p3',
-      });
-    db.patchMember(name, {
-      state: 'blocked',
-      state_since: 0,
-      screen_hash: screenHash('unchanged'),
-    });
-  }
-  for (const now of [120001, 150001, 180001])
-    await checkAdvisories(db, h.client, now);
-  expect(db.inbox('lead')).toHaveLength(2);
-  expect(h.calls.filter((c) => c[0] === 'notification')).toHaveLength(2);
 });
 
 it('splits a surviving pane after killing the latest split member', async () => {
@@ -323,69 +293,20 @@ it('sends only one Esc while urgent mail waits, including after a retry', async 
   expect(h.calls.filter((c) => c[1] === 'send-keys')).toHaveLength(2);
 });
 
-it('resubscribes when a late member is registered without waiting for the tick', async () => {
-  const db = setup();
-  const h = harness();
-  const controller = new AbortController();
-  const socketPath = join(db.home, 'herdr.sock');
-  let subscriptions = 0;
-  const server = createServer((socket) => {
-    socket.on('error', () => socket.destroy());
-    socket.once('data', (chunk) => {
-      const request = JSON.parse(chunk.toString()) as {
-        params: { subscriptions: { type: string; pane_id?: string }[] };
-      };
-      subscriptions++;
-      socket.write(
-        JSON.stringify({
-          id: 'herdr-teams-supervisor',
-          result: { type: 'subscription_started' },
-        }) + '\n',
-      );
-      if (subscriptions === 1) {
-        db.reserveMember('bob', {
-          kind: 'claude',
-          pane_id: 'w1:p3',
-          state: 'starting',
-        });
-      } else {
-        expect(request.params.subscriptions).toContainEqual({
-          type: 'pane.agent_status_changed',
-          pane_id: 'w1:p3',
-        });
-        controller.abort();
-        socket.end();
-      }
-    });
-  });
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(socketPath, resolve);
-  });
-  const timeout = setTimeout(() => controller.abort(), 2500);
-  try {
-    await supervise(
-      db,
-      h.client,
-      { HERDR_SOCKET_PATH: socketPath },
-      controller.signal,
-      () => {},
-    );
-    expect(subscriptions).toBe(2);
-  } finally {
-    clearTimeout(timeout);
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  }
-});
-
-it('fallback event hooks skip a connected supervisor', async () => {
+it('event hooks reconcile despite a legacy supervisor readiness file', async () => {
   const db = setup();
   const socket = join(db.home, 'herdr.sock');
   db.bindSession(socket);
   const lock = join(db.root, 'locks', 'supervisor');
   mkdirSync(lock);
   writeFileSync(join(lock, 'ready'), String(process.pid));
-  const fake = await fakeHerdr([]);
+  const fake = await fakeHerdr([
+    jsonReply({
+      type: 'agent_list',
+      agents: [{ ...agent, completion_seq: 0 }],
+    }),
+    jsonReply({ type: 'ok' }),
+  ]);
   try {
     const code = await runCliAsync(['_hook', 'event'], {
       version: 'test',
@@ -401,13 +322,13 @@ it('fallback event hooks skip a connected supervisor', async () => {
       stderr: () => {},
     });
     expect(code).toBe(0);
-    expect(await fake.calls()).toHaveLength(0);
+    expect((await fake.calls())[0]).toEqual(['agent', 'list']);
   } finally {
     await fake.cleanup();
   }
 });
 
-it('event shim avoids Node with live supervisors and restores fallback after exit', () => {
+it('event shim invokes delivery regardless of legacy supervisor files', () => {
   const db = setup();
   const lock = join(db.root, 'locks', 'supervisor');
   mkdirSync(lock);
@@ -430,7 +351,7 @@ it('event shim avoids Node with live supervisors and restores fallback after exi
         encoding: 'utf8',
       },
     );
-  expect(run()).toBe('');
+  expect(run()).toBe('fallback');
   writeFileSync(ready, '99999999');
   expect(run()).toBe('fallback');
   rmSync(ready);

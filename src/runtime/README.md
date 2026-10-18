@@ -3,7 +3,8 @@
 `_hook event` and `_hook startup` reconcile registered members with herdr's
 live agent list. The CLI also reconciles after successful commands. Hooks use
 live state rather than trusting event payloads, so repeated or stale events are
-harmless. The supervisor tick and reconnect paths also call `reconcile`.
+harmless. Hooks are the normal delivery path; no pane or persistent process is
+required.
 
 Waiting messages arrive as one prompt when the recipient is idle or done.
 Blocked, missing and unknown agents keep their mail. Working Codex agents receive
@@ -16,30 +17,17 @@ or recent pane output. Idle teammates without an active task claim assigned work
 first, then unassigned work when no mail is waiting, unless `auto_claim` is false.
 
 Lifecycle reconciliation confirms exits and releases active tasks. Registered
-pane IDs guard against unrelated agents with the same name. No real-agent
-integration test has been run; contract tests use Codex fixtures and a fake
-herdr subprocess.
+pane IDs guard against unrelated agents with the same name. Contract tests use Codex fixtures and a fake herdr subprocess. A live herdr
+0.9.5 check with stand-in agent executables verifies hook dispatch, lead delivery,
+completion reports and exit classification; real coding-agent UX remains unverified.
 
 Delivery is at least once: a crash after herdr accepts a prompt but before the
 cursor is saved can repeat it. Individual records are replaced atomically;
 related task, message, report and cursor writes are not one crash-safe
-transaction. A delivery lease serializes hooks; a later invocation clears a
-lease older than a minute only when its owner process has exited. Reconciliation
-on the following invocation resumes delivery.
-
-`supervise` opens a plugin pane. Inside that pane it subscribes to herdr's Unix
-socket, serializes event handling, samples progress on a configurable clock,
-and reconnects with a fresh session snapshot after disconnect or event loss.
-The startup hook reopens missing supervisor panes. `supervisor.mode: off`
-retains hook delivery without time-based advisories.
-Roster changes reconnect the event stream to subscribe to new pane IDs.
-Event hooks check for a connected supervisor before starting Node and skip teams
-already served by one. Disconnected or exited supervisors restore fallback delivery.
-
-Advisories use state changes, member CLI activity and normalized output hashes.
-Each episode has one notice and one recovery. Recent human focus or an
-`interactive` member suppresses lead notices. Needs-input also notifies the
-human. Optional status-check nudges never close or restart agents.
+transaction. A delivery lease serializes hooks. Concurrent invocations wait up to ten seconds
+for a fresh pass rather than discarding events; contention beyond that fails
+explicitly. A lease older than a minute is recovered only when its owner process
+has exited. Startup and subsequent commands retry pending delivery.
 
 `peek` reads output. `interrupt` and task release send Esc and optionally queue
 context-preserving instructions; blocked agents refuse these actions. Urgent

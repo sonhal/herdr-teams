@@ -50,7 +50,7 @@ export function installCoreCommands(
     const hooks = pluginStateDir(env);
     if (hooks && hooks !== home)
       warn(
-        `warning: herdr's startup and event hooks read ${hooks}, not ${home}; this team relies on its supervisor\n`,
+        `warning: herdr's startup and event hooks read ${hooks}, not ${home}; event hooks will not find this team\n`,
       );
     const db = new Store(home, randomUUID());
     db.create(
