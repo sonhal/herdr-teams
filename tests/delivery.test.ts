@@ -187,3 +187,37 @@ it('startup hooks flush mail without a team identity', async () => {
     await fake.cleanup();
   }
 });
+
+it('supports valid member names that match object prototype properties', async () => {
+  const db = setup();
+  db.addMember('constructor');
+  const recipient = { ...idle, name: 'constructor' };
+  db.send('lead', 'constructor', 'valid name');
+  const fake = await fakeHerdr([
+    jsonReply({ type: 'agent_list', agents: [recipient] }),
+    jsonReply({ type: 'agent_info', agent: recipient }),
+    jsonReply({ type: 'agent_prompted', agent: recipient }),
+  ]);
+  try {
+    await reconcile(db, new HerdrClient({ env: fake.env }));
+    expect(db.deliveryState().cursors.constructor).toBeDefined();
+  } finally {
+    await fake.cleanup();
+  }
+});
+
+it('does not prompt a replacement agent that took over the pane', async () => {
+  const db = setup();
+  db.send('lead', 'alice', 'private mail');
+  const fake = await fakeHerdr([
+    list(),
+    jsonReply({ type: 'agent_info', agent: { ...idle, name: 'other' } }),
+  ]);
+  try {
+    await reconcile(db, new HerdrClient({ env: fake.env }));
+    expect((await fake.calls()).some((c) => c[1] === 'prompt')).toBe(false);
+    expect(db.deliveryState().cursors).toEqual({});
+  } finally {
+    await fake.cleanup();
+  }
+});

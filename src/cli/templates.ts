@@ -12,7 +12,8 @@ export function installTemplateCommands(
   const group = program.commands.find((c) => c.name() === 'team')!;
   const replace = (name: string, usage: string) => {
     const old = group.commands.find((c) => c.name() === name)!;
-    (group.commands as Command[]).splice(group.commands.indexOf(old), 1);
+    if (old)
+      (group.commands as Command[]).splice(group.commands.indexOf(old), 1);
     return group.command(usage);
   };
   const print = (v: unknown) => output(JSON.stringify(v, null, 2) + '\n');

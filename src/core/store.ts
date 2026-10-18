@@ -369,7 +369,11 @@ export class Store {
       return task;
     });
   }
-  add(subject: string, description = ''): Task {
+  add(
+    subject: string,
+    description = '',
+    options: { gate?: string; planMode?: boolean; worktree?: boolean } = {},
+  ): Task {
     if (!subject.trim()) throw new Error('Task subject is required');
     return this.lock(() => {
       const counter = join(this.root, 'tasks', '.highwatermark');
@@ -379,6 +383,9 @@ export class Store {
         id: String(id),
         subject,
         description,
+        ...(options.gate ? { gate: options.gate } : {}),
+        ...(options.planMode ? { plan_mode: true } : {}),
+        ...(options.worktree ? { worktree: { required: true } } : {}),
         status: 'pending',
         owner: null,
         blockedBy: [],
@@ -517,9 +524,23 @@ export class Store {
   }
   deliveryState(): DeliveryState {
     const path = join(this.root, 'delivery.json');
-    return existsSync(path)
+    const state = existsSync(path)
       ? read<DeliveryState>(path)
       : { cursors: {}, reports: {} };
+    state.blocked ??= {};
+    state.acknowledged ??= {};
+    state.idle_hooks ??= {};
+    for (const key of [
+      'cursors',
+      'reports',
+      'blocked',
+      'acknowledged',
+      'idle_hooks',
+    ] as const) {
+      const map = state[key];
+      if (map) Object.setPrototypeOf(map, null);
+    }
+    return state;
   }
   saveDeliveryState(state: DeliveryState): void {
     atomic(join(this.root, 'delivery.json'), state);

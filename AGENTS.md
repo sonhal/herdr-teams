@@ -23,6 +23,9 @@
   and checks. If a step is blocked, explain the blocker and what remains.
 - Creating a pull request does not authorize merging it. Merge only when the
   user explicitly asks.
+- This repository uses squash merges. After a prerequisite PR lands, rebase
+  dependent branches onto the updated `origin/main`, omitting the original
+  prerequisite commits, and push with explicit `--force-with-lease` guards.
 - Push and get CI green. Don't merge unless the owner asks.
 
 Writing style

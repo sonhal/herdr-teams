@@ -1,3 +1,4 @@
+import { serveMcp } from '../mcp/server.js';
 import { Command, CommanderError } from 'commander';
 import { installBoardCommands } from './board.js';
 import { syncSidebar } from '../supervisor/sidebar.js';
@@ -21,7 +22,7 @@ export interface CliOptions {
   stderr?: (text: string) => void;
 }
 
-/** PLAN §15: core commands plus placeholders for later milestones. */
+/** Shared CLI for shell users, the board and MCP tools. */
 export function createCli(options: CliOptions): Command {
   const env = options.env ?? process.env;
   const stdout =
@@ -37,98 +38,19 @@ export function createCli(options: CliOptions): Command {
     .configureOutput({ writeOut: stdout, writeErr: stderr })
     .exitOverride();
 
-  function placeholder(
-    command: Command,
-    section: string,
-    milestone: string,
-  ): void {
-    command.action(() => {
-      const flags = command.optsWithGlobals<{
-        team?: string;
-        json?: boolean;
-      }>();
-      const names: string[] = [];
-      for (
-        let current: Command | null = command;
-        current?.parent;
-        current = current.parent
-      ) {
-        names.unshift(current.name());
-      }
-      const result = {
-        command: names.join(' '),
-        status: 'not implemented',
-        todo: `PLAN §${section}, ${milestone}`,
-        identity: readIdentity(env, flags.team),
-      };
-      stdout(
-        flags.json
-          ? `${JSON.stringify(result)}\n`
-          : `${result.command}: not implemented (${result.todo})\n`,
-      );
-    });
-  }
-
-  function leaf(
-    parent: Command,
-    name: string,
-    section: string,
-    milestone: string,
-  ): void {
-    const command = parent
-      .command(`${name} [args...]`)
-      .description(`Not implemented — PLAN §${section}, ${milestone}`)
-      // Future command-specific flags are deliberately uninterpreted in M0.
-      .allowUnknownOption();
-    placeholder(command, section, milestone);
-  }
-
-  function group(
-    name: string,
-    children: string[],
-    section: string,
-    milestone: string,
-  ): Command {
-    const command = program
-      .command(name)
-      .description(`Not implemented — PLAN §${section}, ${milestone}`);
-    placeholder(command, section, milestone);
-    for (const child of children) leaf(command, child, section, milestone);
-    return command;
-  }
-
-  group('team', ['create', 'start', 'save', 'list'], '5', 'M1–M2, M7');
-  const task = group(
-    'task',
-    ['add', 'list', 'show', 'claim', 'assign', 'release', 'update', 'complete'],
-    '6',
-    'M1',
-  );
-  const dep = task.command('dep').description('Task dependencies (M1)');
-  placeholder(dep, '6', 'M1');
-  for (const name of ['add', 'rm']) leaf(dep, name, '6', 'M1');
-  group('msg', ['send'], '7', 'M1, M3');
-  group('plan', ['submit', 'approve', 'reject'], '8', 'M6');
-  group(
-    'worktree',
-    ['create', 'request', 'approve', 'status', 'diff', 'merge', 'remove'],
-    '10',
-    'M5',
-  );
-
-  for (const name of ['status', 'log']) leaf(program, name, '12', 'M4, M8');
-  for (const name of ['done', 'cleanup', 'spawn', 'shutdown', 'kill'])
-    leaf(program, name, '5', 'M2, M5');
-  for (const name of ['peek', 'steer', 'interrupt'])
-    leaf(program, name, '11.4', 'M4');
-  for (const name of ['broadcast', 'report', 'inbox'])
-    leaf(program, name, '7', 'M1, M3');
-  leaf(program, 'board', '12', 'M8');
-  leaf(program, 'supervise', '11.5', 'M4');
-  leaf(program, 'install-shim', '16', 'M2');
-  const hooks = program.command('_hook');
+  for (const name of ['team', 'task', 'msg', 'plan', 'worktree', '_action'])
+    program.command(name);
+  program.commands.find((c) => c.name() === 'task')!.command('dep');
+  const hooks = program
+    .command('_hook')
+    .description('Reconcile plugin lifecycle events');
   for (const name of ['startup', 'event']) hooks.command(name).action(() => {});
-  group('_action', ['start-team', 'open-board'], '16', 'M2, M8');
+  program
+    .command('mcp')
+    .description('Serve MCP tools over stdio')
+    .action(async () => {
+      await serveMcp(process.stdin, stdout, options.version, env);
+    });
   installCoreCommands(program, env, stdout);
   installLifecycleCommands(program, env, stdout);
   installSupervisionCommands(program, env, stdout);
@@ -177,7 +99,8 @@ export async function runCliAsync(
   )
     return code;
   const command = program.args[0];
-  if (['status', 'board', 'log', 'supervise'].includes(command ?? '')) return 0;
+  if (['status', 'board', 'log', 'supervise', 'mcp'].includes(command ?? ''))
+    return 0;
   const env = options.env ?? process.env;
   const identity = readIdentity(env);
   if (!identity.home) return code;
