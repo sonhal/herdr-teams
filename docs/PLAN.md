@@ -227,8 +227,8 @@ herdr-teams spawn <name> [--agent <definition>] [--kind claude|codex|pi]
 
 **Launch failures.** If `agent start` errors or times out, or the agent exits
 within the start-up window (e.g. because of a bad `--model`), the member's end
-state is `failed-to-launch`. The lead gets the launch arguments and the last
-~40 lines of the pane, and the pane is kept open for inspection.
+state is `failed-to-launch`. The lead gets the launch arguments and the
+error, and the pane is kept open for `peek`.
 
 ### 5.3 Ending
 
@@ -488,7 +488,7 @@ Every teammate ends in exactly one end state, reported once to the lead:
 |---|---|---|
 | `shut-down` | shutdown accepted, then the agent exited | summary |
 | `closed-by-user` | pane or agent closed with no handshake, after a human focused it | last output |
-| `failed-to-launch` | `agent start` failed, or the agent exited during start-up | launch arguments, last output |
+| `failed-to-launch` | `agent start` failed, or the agent exited during start-up | launch arguments, error |
 | `crashed` | the agent exited or vanished later | last output, session reference for resuming |
 | `killed` | `herdr-teams kill` | — |
 

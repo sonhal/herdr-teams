@@ -170,20 +170,11 @@ export class Lifecycle {
       this.db.event('member.spawned', { member, pane_id: pane.pane_id });
       return this.db.config().details![member]!;
     } catch (error) {
-      let output = '';
-      if (pane)
-        try {
-          output = await this.client.paneRead(pane.pane_id, {
-            source: 'recent-unwrapped',
-            lines: 40,
-          });
-        } catch {
-          /* Preserve the original launch error. */
-        }
+      // The pane stays open, so the lead peeks if the error isn't enough.
       this.db.endMember(
         member,
         'failed-to-launch',
-        `Arguments: ${JSON.stringify(resolved.args)}\n${String(error)}\n${output}`,
+        `Arguments: ${JSON.stringify(resolved.args)}\n${String(error)}${pane ? `\nPeek: herdr-teams peek ${member}` : ''}`,
       );
       throw error;
     }

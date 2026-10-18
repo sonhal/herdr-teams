@@ -111,7 +111,7 @@ A shutdown request waits for the member to accept or reject it. Accepted request
 exit the CLI when idle and close the pane only after exit is observed. `done`
 accepts shutdown for all teammates the same way, refusing active tasks; `done --force` and
 `kill <name>` close panes and return active tasks to pending. Launch failures
-retain the pane and send the lead arguments and recent output.
+retain the pane for `peek` and send the lead the arguments and error.
 
 ## Team control
 
