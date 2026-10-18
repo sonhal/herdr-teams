@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runCliAsync } from '../../src/cli/index.js';
 import { HERDR_VERSION, startLiveHerdr, type LiveHerdr } from './harness.js';
@@ -66,9 +68,18 @@ describe(`team lifecycle on herdr ${HERDR_VERSION}`, () => {
   });
 
   it('spawns a member into its own pane and delivers the bootstrap', async () => {
+    const roles = join(herdr.env.HOME!, '.pi', 'agent', 'agents');
+    mkdirSync(roles, { recursive: true });
+    writeFileSync(
+      join(roles, 'custom.md'),
+      '---\nkind: codex\n---\nFollow the existing custom role instructions.',
+    );
     const spawned = await cli(
-      ['spawn', 'bob', '--kind', 'codex', '--prompt', 'Say hello', '--json'],
-      { HERDR_TEAMS_TEAM: teamId },
+      ['spawn', 'bob', '--agent', 'custom', '--prompt', 'Say hello', '--json'],
+      {
+        HERDR_TEAMS_TEAM: teamId,
+        PI_CODING_AGENT_DIR: join(herdr.env.HOME!, '.pi', 'agent'),
+      },
     );
     expect(spawned.stderr).toBe('');
     expect(spawned.exitCode).toBe(0);
@@ -96,6 +107,7 @@ describe(`team lifecycle on herdr ${HERDR_VERSION}`, () => {
       lines: 200,
     });
     expect(output).toContain('You are bob');
+    expect(output).toContain('Follow the existing custom role instructions.');
   });
 
   it('refuses a second member with the same name and starts no pane for it', async () => {
