@@ -17,6 +17,12 @@ export interface Team {
   lead: string;
   members: string[];
   auto_claim?: boolean;
+  repository_dir?: string;
+  worktree_requests?: 'lead' | 'auto';
+  requests?: Record<
+    string,
+    { member: string; reason: string; task?: string; approved: boolean }
+  >;
   workspace_id?: string;
   lead_pane_id?: string;
   details?: Record<string, Member>;
@@ -32,6 +38,14 @@ export interface Team {
     on_no_progress?: 'notify' | 'nudge';
   };
   createdAt: string;
+}
+export interface Worktree {
+  path: string;
+  branch: string;
+  base: string;
+  workspace_id: string;
+  pane_id: string;
+  tab_id: string;
 }
 export type EndState =
   'shut-down' | 'closed-by-user' | 'failed-to-launch' | 'crashed' | 'killed';
@@ -59,6 +73,8 @@ export interface Member {
   shutdown_accepted?: boolean;
   shutdown_exit_sent?: boolean;
   launch_args?: string[];
+  worktree_mode?: 'shared' | 'dedicated' | 'auto';
+  worktree?: Worktree;
   launch_pid?: number;
   started_at?: number;
   last_output?: string;
@@ -71,6 +87,7 @@ export interface Task {
   status:
     'pending' | 'planning' | 'in_progress' | 'completed' | 'failed' | 'deleted';
   owner: string | null;
+  worktree?: { required?: boolean; binding?: Worktree };
   blockedBy: string[];
   blocks: string[];
   result: string | null;
@@ -312,6 +329,15 @@ export class Store {
     task.updatedAt = new Date().toISOString();
     atomic(join(this.root, 'tasks', `${task.id}.json`), task);
     return task;
+  }
+  editTask(id: string, update: (task: Task) => void): Task {
+    return this.lock(() => {
+      const task = this.task(id);
+      update(task);
+      this.save(task);
+      this.event('task.updated', task);
+      return task;
+    });
   }
   add(subject: string, description = ''): Task {
     if (!subject.trim()) throw new Error('Task subject is required');

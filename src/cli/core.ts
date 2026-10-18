@@ -1,4 +1,6 @@
 import { Command } from 'commander';
+import { HerdrClient } from '../herdr/index.js';
+import { Worktrees, worktreeStatus } from '../core/worktrees.js';
 import { Store } from '../core/store.js';
 import { readIdentity } from './identity.js';
 
@@ -57,18 +59,21 @@ export function installCoreCommands(
   list.action(() => print(Store.teams(context(list).home)));
   const tasks = program.commands.find((c) => c.name() === 'task')!;
   tasks.description('Manage persistent tasks and dependencies');
-  const add = replace(tasks, 'add', 'add <subject>').option(
-    '--description <text>',
-    'task description',
-  );
-  add.action((subject: string) =>
-    print(
-      store(add).db.add(
-        subject,
-        add.opts<{ description?: string }>().description,
-      ),
-    ),
-  );
+  const add = replace(tasks, 'add', 'add <subject>')
+    .option('--description <text>', 'task description')
+    .option('--worktree', 'require a dedicated worktree');
+  add.action((subject: string) => {
+    const { db } = store(add);
+    const task = db.add(
+      subject,
+      add.opts<{ description?: string }>().description,
+    );
+    if (add.opts<{ worktree?: boolean }>().worktree)
+      db.editTask(task.id, (t) => {
+        t.worktree = { required: true };
+      });
+    print(db.task(task.id));
+  });
   const taskList = replace(tasks, 'list', 'list');
   taskList.action(() => print(store(taskList).db.tasks()));
   const show = replace(tasks, 'show', 'show <id>');
@@ -101,19 +106,39 @@ export function installCoreCommands(
         subject?: string;
         description?: string;
       }>();
-      print(
-        db.change(
-          id,
-          action,
-          actor,
-          action === 'assign'
-            ? String(owner)
-            : action === 'complete'
-              ? flags.result
-              : flags.subject,
-          flags.description,
-        ),
+      const changed = db.change(
+        id,
+        action,
+        actor,
+        action === 'assign'
+          ? String(owner)
+          : action === 'complete'
+            ? flags.result
+            : flags.subject,
+        flags.description,
       );
+      if (
+        action === 'claim' &&
+        changed.worktree?.required &&
+        !changed.worktree.binding
+      ) {
+        return new Worktrees(db, new HerdrClient({ env }))
+          .create(id)
+          .then(() => print(db.task(id)))
+          .catch((error: unknown) => {
+            db.change(id, 'release', actor);
+            throw error;
+          });
+      }
+      if (action === 'complete' && changed.worktree?.binding)
+        db.send(
+          actor,
+          db.config().lead,
+          `Task #${id} completed: ${JSON.stringify(worktreeStatus(changed.worktree.binding))}`,
+          false,
+          'report',
+        );
+      print(db.task(id));
     });
   }
   const dep = tasks.commands.find((c) => c.name() === 'dep')!;

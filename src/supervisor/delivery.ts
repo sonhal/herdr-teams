@@ -1,5 +1,6 @@
 import { mkdir, rm, readFile, writeFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { Worktrees, worktreeStatus } from '../core/worktrees.js';
 import { syncMembers } from './lifecycle.js';
 import { Store, type Message } from '../core/store.js';
 import { HerdrClient, type AgentInfo } from '../herdr/index.js';
@@ -105,7 +106,7 @@ export async function reconcile(db: Store, client: HerdrClient): Promise<void> {
       db.send(
         member,
         team.lead,
-        `Turn completed.\n${tasks.map((t) => `#${t.id} ${t.status}: ${t.subject}`).join('\n')}\n${output}`,
+        `Turn completed.\n${tasks.map((t) => `#${t.id} ${t.status}: ${t.subject}`).join('\n')}\n${output}\n${team.details?.[member]?.worktree ? JSON.stringify(worktreeStatus(team.details[member]!.worktree!)) : ''}`,
         false,
         'report',
       );
@@ -134,14 +135,23 @@ export async function reconcile(db: Store, client: HerdrClient): Promise<void> {
         team.auto_claim !== false
       ) {
         const task = db.autoClaim(member);
-        if (task)
+        if (task) {
+          if (task.worktree?.required && !task.worktree.binding) {
+            try {
+              await new Worktrees(db, client).create(task.id);
+            } catch (error) {
+              db.change(task.id, 'release', team.lead);
+              throw error;
+            }
+          }
           pending = [
             db.send(
               team.lead,
               member,
-              `You claimed task #${task.id}: ${task.subject}\n${task.description}`,
+              `You claimed task #${task.id}: ${task.subject}\n${task.description}\n${db.task(task.id).worktree?.binding ? `Work in ${JSON.stringify(db.task(task.id).worktree!.binding!.path)}` : ''}`,
             ),
           ];
+        }
       }
       if (!pending.length) continue;
       // Recheck after reports and disk operations; herdr also rejects blocked agents.

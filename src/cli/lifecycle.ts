@@ -56,7 +56,7 @@ export function installLifecycleCommands(
     .option('--model <model>', 'model name')
     .option('--thinking <level>', 'thinking effort')
     .option('--placement <placement>', 'split, tab or workspace', 'split')
-    .option('--worktree <mode>', 'shared or auto', 'shared')
+    .option('--worktree <mode>', 'shared, dedicated or auto', 'shared')
     .option('--plan-mode', 'request a plan before coding')
     .requiredOption('--prompt <text>', 'opening instructions');
   spawn.action(async (member: string) => {

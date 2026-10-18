@@ -86,7 +86,7 @@ herdr-teams --team demo shutdown alice
 Members receive team identity and the CLI on PATH. Splits use team tabs with
 four teammates per tab; `--placement tab|workspace` gives a member its own
 location. All panes open without taking focus. `--model` and `--thinking`
-override team defaults. Dedicated worktrees await M5.
+override team defaults. Use `--worktree dedicated` for an isolated checkout, or `auto` to start shared.
 
 A shutdown request waits for the member to accept or reject it. Accepted requests
 exit the CLI when idle and close the pane only after exit is observed. `done`
@@ -112,3 +112,26 @@ herdr-teams --team demo task release 1 --reason "Reassigning the task"
 
 Only the lead or user may interrupt, release or kill. Blocked agents must have
 their permission or question prompt answered before those input operations.
+
+## Worktrees
+
+```sh
+herdr-teams --team demo worktree create alice
+herdr-teams --team demo worktree status alice
+herdr-teams --team demo worktree diff alice
+herdr-teams --team demo worktree merge alice
+herdr-teams --team demo worktree remove alice
+```
+
+Only the lead or user creates, merges and removes worktrees. Teammates can
+`worktree request --reason "…"`; the lead uses `worktree approve <id>`.
+`worktree_requests: auto` approves requests immediately. `task add --worktree`
+requires an isolated checkout when claimed. Creation pins a committed base;
+uncommitted changes in the lead checkout stay there.
+
+Completion reports include branch, base, head, commit count and checkout state.
+Merge requires clean checkouts and runs only on an explicit command. Removal
+requires no running agent, a clean checkout and a branch merged into the lead's
+HEAD. `--preserve` commits dirty files first, `--force-unmerged` keeps an unmerged
+branch, and `--delete-branch` explicitly removes the branch. `cleanup` lists
+ended members' worktrees; `cleanup --apply` removes only eligible ones.
