@@ -1,1 +1,18 @@
-TODO PLAN §4.3, §6–9 (M1): file store, tasks, inboxes, and locking.
+# Core store (M1)
+
+`Store` persists teams, tasks, dependencies, inboxes and events under
+`$HERDR_TEAMS_HOME/teams/<team>` (falling back to `$HERDR_PLUGIN_STATE_DIR`
+in the CLI). Task records and configuration use temporary-file-and-rename
+writes. A team-wide mkdir lock serializes task and membership mutations,
+including dependency cycle checks and claims. Locks older than a minute are
+recovered only when their owner process is gone. Contenders time out after
+10 seconds; retry an operation after an interrupted writer.
+
+Inboxes and events use single append writes. Reading an inbox never marks it
+delivered. Urgent mail is recorded; delivery, cursors and reconciliation arrive
+in M3. Member registration is a core API for M2 spawning; M1 creates just the
+lead. Plan mode and quality gates arrive in M6.
+
+Each JSON record is atomic, but a process crash between related dependency
+writes or between a record and its event can leave partial bookkeeping.
+The store assumes a local filesystem and trusted local configuration files.

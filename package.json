@@ -15,7 +15,8 @@
     "test": "vitest run",
     "lint": "eslint . && prettier --check .",
     "typecheck": "tsc --noEmit",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "pretest": "npm run build"
   },
   "dependencies": {
     "commander": "^14.0.0"

@@ -48,24 +48,8 @@ describe('CLI skeleton', () => {
   });
   it.each([
     ['team'],
-    ['team', 'create', 'auth'],
     ['team', 'start', 'template'],
     ['team', 'save', 'template'],
-    ['team', 'list'],
-    ['task', 'add', 'subject'],
-    ['task', 'list'],
-    ['task', 'show', '1'],
-    ['task', 'claim', '1'],
-    ['task', 'assign', '1', 'alice'],
-    ['task', 'release', '1'],
-    ['task', 'update', '1'],
-    ['task', 'complete', '1'],
-    ['task', 'dep', 'add', '1', '2'],
-    ['task', 'dep', 'rm', '1', '2'],
-    ['msg', 'send', 'alice', '--urgent', 'hello'],
-    ['broadcast', 'hello'],
-    ['report', 'hello'],
-    ['inbox'],
     ['plan', 'submit', '1', '--file', 'plan.md'],
     ['plan', 'approve', '1'],
     ['plan', 'reject', '1'],
@@ -105,9 +89,9 @@ describe('CLI skeleton', () => {
     expect(result.stderr).toBe('');
   });
   it.each([
-    ['--team', 'override', '--json', 'task', 'list'],
-    ['task', '--team', 'override', 'list', '--json'],
-    ['task', 'list', '--team', 'override', '--json'],
+    ['--team', 'override', '--json', 'plan', 'approve', '1'],
+    ['plan', '--team', 'override', 'approve', '1', '--json'],
+    ['plan', 'approve', '1', '--team', 'override', '--json'],
   ])('accepts global flags at every command depth: %j', (...argv) => {
     const result = run(argv, {
       HERDR_TEAMS_TEAM: 'default',
@@ -117,7 +101,7 @@ describe('CLI skeleton', () => {
     });
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({
-      command: 'task list',
+      command: 'plan approve',
       status: 'not implemented',
       identity: {
         team: 'override',
