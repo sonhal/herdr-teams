@@ -3,3 +3,8 @@ dist/
 coverage/
 *.tsbuildinfo
 .cache/
+.env
+.env.*
+!.env.example
+*.pem
+*.key

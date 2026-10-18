@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+cd "$(git rev-parse --show-toplevel)"
+PATH="$PWD/.cache/bin:$PATH"
+export PATH
+if ! command -v git-secrets >/dev/null 2>&1; then
+  echo 'Install git-secrets before committing; see docs/development.md.' >&2
+  exit 1
+fi
+
+exec git -c 'secrets.providers=cat .git-secrets' secrets --scan --cached
