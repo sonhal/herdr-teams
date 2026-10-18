@@ -1,6 +1,6 @@
 # herdr-teams
 
-![header](static/herdr-teams.png)
+![header](static/herdr-teams-dark-mode.png)
 
 > ⚠️ **Work in progress.** Not ready for use.
 
