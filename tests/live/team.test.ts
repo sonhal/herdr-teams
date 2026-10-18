@@ -101,6 +101,7 @@ describe(`team lifecycle on herdr ${HERDR_VERSION}`, () => {
         encoding: 'utf8',
       }),
     ).result.pane;
+    // report-metadata sets display_agent to the member name.
     expect(labelled).toMatchObject({ display_agent: 'bob' });
 
     const output = await herdr.client.paneRead(member.pane_id, {
@@ -141,6 +142,17 @@ describe(`team lifecycle on herdr ${HERDR_VERSION}`, () => {
       display_agent: 'lead',
       tokens: { team: 'demo' },
     });
+    // The sidebar sync leaves the member pane's title to herdr's agent state,
+    // so the border shows the member name via display_agent instead of the
+    // state string the sidebar used to write.
+    const bob = JSON.parse(
+      execFileSync(herdr.env.HERDR_BIN_PATH!, ['pane', 'get', bobPane], {
+        env: herdr.env,
+        encoding: 'utf8',
+      }),
+    ).result.pane;
+    expect(bob).toMatchObject({ display_agent: 'bob' });
+    expect(bob.title ?? null).toBeNull();
   });
 
   it('status shows the state herdr reports for the pane, not the stored one', async () => {

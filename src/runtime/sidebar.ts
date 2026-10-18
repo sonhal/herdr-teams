@@ -43,6 +43,9 @@ export async function syncSidebar(db: Store, client: HerdrClient) {
       const details = team.details?.[member.name];
       if (!details?.pane_id || details.ended) continue;
       const task = data.tasks.find((t) => member.tasks.includes(t.id));
+      // Don't set --title on member panes: herdr overwrites title with the
+      // agent state, which would hide the member name the border shows via
+      // display_agent. The lead pane shows its name the same way.
       const argv = [
         'pane',
         'report-metadata',
@@ -51,8 +54,6 @@ export async function syncSidebar(db: Store, client: HerdrClient) {
         'herdr-teams',
         '--display-agent',
         token(member.name),
-        '--title',
-        token(`${member.state}${task ? ` · #${task.id} ${task.subject}` : ''}`),
         '--token',
         `team=${token(team.name)}`,
         '--token',
