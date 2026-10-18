@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { Store } from '../core/store.js';
+import { text } from './format.js';
 import { readSelectedIdentity } from './identity.js';
 
 export type Output = (text: string) => void;
@@ -33,6 +34,11 @@ export function teamContext(
   };
 }
 
-export function printer(output: Output): (value: unknown) => void {
-  return (value) => output(JSON.stringify(value, null, 2) + '\n');
+/** `--json` prints the record; otherwise the command's compact format. */
+export function printer(output: Output, program: Command) {
+  return <T>(value: T, format: (value: T) => string = text) => {
+    if (program.opts<{ json?: boolean }>().json)
+      output(JSON.stringify(value, null, 2) + '\n');
+    else output(format(value).replace(/\n?$/, '\n'));
+  };
 }

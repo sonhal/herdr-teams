@@ -25,6 +25,7 @@ export class Lifecycle {
     readonly db: Store,
     readonly client: HerdrClient,
     readonly env: NodeJS.ProcessEnv,
+    readonly warn: (text: string) => void = () => {},
   ) {}
 
   /**
@@ -112,10 +113,11 @@ export class Lifecycle {
       };
       const cwd = options.cwd ?? process.cwd();
       if (options.worktree === 'dedicated') {
-        const tree = await new Worktrees(this.db, this.client).create(
-          member,
-          cwd,
-        );
+        const tree = await new Worktrees(
+          this.db,
+          this.client,
+          this.warn,
+        ).create(member, cwd);
         pane = (
           await this.client.paneSplit({
             pane: tree.pane_id,

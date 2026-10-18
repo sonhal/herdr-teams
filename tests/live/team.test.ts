@@ -48,7 +48,14 @@ describe(`team lifecycle on herdr ${HERDR_VERSION}`, () => {
       pane: leadPane,
       timeoutMs: 20_000,
     });
-    const created = await cli(['team', 'create', 'demo', '--lead', 'lead']);
+    const created = await cli([
+      'team',
+      'create',
+      'demo',
+      '--lead',
+      'lead',
+      '--json',
+    ]);
     expect(created.exitCode).toBe(0);
     teamId = JSON.parse(created.stdout).id;
   }, 60_000);
@@ -59,7 +66,7 @@ describe(`team lifecycle on herdr ${HERDR_VERSION}`, () => {
 
   it('spawns a member into its own pane and delivers the bootstrap', async () => {
     const spawned = await cli(
-      ['spawn', 'bob', '--kind', 'codex', '--prompt', 'Say hello'],
+      ['spawn', 'bob', '--kind', 'codex', '--prompt', 'Say hello', '--json'],
       { HERDR_TEAMS_TEAM: teamId },
     );
     expect(spawned.stderr).toBe('');

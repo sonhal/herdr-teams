@@ -40,6 +40,8 @@ export class Worktrees {
   constructor(
     readonly db: Store,
     readonly client: HerdrClient,
+    /** Notes for whoever runs the command; nobody else needs them. */
+    readonly warn: (text: string) => void = () => {},
   ) {}
   binding(member: string): Worktree {
     const tree = this.db.config().details?.[member]?.worktree;
@@ -63,10 +65,8 @@ export class Worktrees {
       }
       if (exists) throw new Error(`Branch ${branch} already exists`);
       if (git(repo, 'status', '--porcelain=v1'))
-        this.db.send(
-          team.lead,
-          team.lead,
-          'The lead checkout has uncommitted changes; the worktree contains committed files only.',
+        this.warn(
+          `warning: the lead checkout has uncommitted changes; ${member}'s worktree contains committed files only\n`,
         );
       const result = await this.client.command(
         [

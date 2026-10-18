@@ -427,7 +427,7 @@ it('creates a team from an ordinary herdr pane in the hooks’ state home', asyn
       HERDR_PANE_ID: 'w1:p1',
     };
     expect(
-      await runCliAsync(['team', 'create', 'demo'], {
+      await runCliAsync(['team', 'create', 'demo', '--json'], {
         version: '0.1.0',
         env,
         stdout: (s) => {
@@ -455,7 +455,7 @@ it('warns when a team is created outside the hooks’ state home', async () => {
   homes.push(home);
   let stdout = '';
   let stderr = '';
-  await runCliAsync(['team', 'create', 'demo'], {
+  await runCliAsync(['team', 'create', 'demo', '--json'], {
     version: '0.1.0',
     env: {
       HERDR_BIN_PATH: '/nonexistent/herdr',
@@ -516,6 +516,27 @@ it('delivers to a teammate under its herdr name, not a same-named agent of anoth
     expect(prompts).toHaveLength(1);
     expect(prompts[0]![2]).toBe(idle.pane_id);
     expect(prompts[0]![3]).toContain('hello');
+  } finally {
+    await fake.cleanup();
+  }
+});
+
+it('prints the command hints once per batch', async () => {
+  const db = setup();
+  addMember(db, 'bob');
+  db.send('lead', 'alice', 'first');
+  db.send('lead', 'alice', 'second');
+  db.send('bob', 'alice', 'third');
+  const fake = await fakeHerdr([list(), get, prompted]);
+  try {
+    await reconcile(db, new HerdrClient({ env: fake.env }));
+    const prompt = (await fake.calls()).find((c) => c[1] === 'prompt')![3]!;
+    expect(prompt.split('Tasks: herdr-teams task list')).toHaveLength(2);
+    expect(
+      prompt.endsWith(
+        '\nReply: herdr-teams msg send <member> "…" · Tasks: herdr-teams task list',
+      ),
+    ).toBe(true);
   } finally {
     await fake.cleanup();
   }
@@ -750,8 +771,8 @@ it('inbox prints undelivered mail unless --all is given', async () => {
         },
       }),
     ).toBe(0);
-    return (JSON.parse(output) as { body: string }[]).map((m) => m.body);
+    return output;
   };
-  expect(await inbox()).toEqual(['waiting']);
-  expect(await inbox('--all')).toEqual(['delivered', 'waiting']);
+  expect(await inbox()).toBe('lead: waiting\n');
+  expect(await inbox('--all')).toBe('lead: delivered\n\nlead: waiting\n');
 });

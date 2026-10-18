@@ -72,7 +72,8 @@ restricted to the lead or a user outside a member pane. `task update` accepts
 `team list`, `task list`, `task show`, `broadcast` and `report` are also available.
 `inbox` prints mail not yet delivered to the caller's pane; `inbox --all`
 prints the full history. Completing a task tells the lead its result.
-Core commands currently print JSON, including when `--json` is omitted.
+Commands print compact text, such as one line per task; `--json` prints the
+full records.
 Messages are persisted and delivered in batches when recipients are idle.
 Blocked recipients retain their mail. A message body is limited to 32 KiB;
 send a file path for anything larger. Large backlogs arrive over several
@@ -146,7 +147,7 @@ herdr-teams --team demo worktree remove alice
 ```
 
 The worktree starts from the lead's last commit; uncommitted changes in the
-lead checkout stay there. Only the lead or user merges and removes worktrees.
+lead checkout stay there, and `spawn` warns about them on stderr. Only the lead or user merges and removes worktrees.
 
 Completion reports include branch, base, head, commit count and checkout state.
 Merge requires clean checkouts and runs only on an explicit command. Removal

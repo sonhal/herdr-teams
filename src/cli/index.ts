@@ -53,11 +53,11 @@ export function createCli(options: CliOptions): Command {
     .description('Reconcile plugin lifecycle events');
   for (const name of ['startup', 'event']) hooks.command(name).action(() => {});
   installCoreCommands(program, env, stdout, stderr);
-  installLifecycleCommands(program, env, stdout);
+  installLifecycleCommands(program, env, stdout, stderr);
   installControlCommands(program, env, stdout);
   installWorktreeCommands(program, env, stdout);
   installPlanCommands(program, env, stdout);
-  installTemplateCommands(program, env, stdout);
+  installTemplateCommands(program, env, stdout, stderr);
   installBoardCommands(program, env, stdout);
   return program;
 }

@@ -59,7 +59,7 @@ export class Plans {
             : 'planning';
       });
       if (outcome.code !== 0) {
-        hooks.failure(actor, updated, outcome);
+        hooks.failure(actor, updated, outcome, true);
         throw new Error(outcome.stderr || 'Plan rejected by hook');
       }
       this.db.send(

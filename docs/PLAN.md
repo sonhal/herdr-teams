@@ -310,16 +310,17 @@ the agent with `herdr agent prompt`.
    is typed; herdr refuses anyway. The message waits, and the lead is told.
 
 Every delivered message is wrapped so that the agent knows it came from a
-teammate, not from the user:
+teammate, not from the user. The command hints follow once per batch:
 
 ```
 [herdr-teams] message from alice (teammate, not the user) — team "auth":
 <body>
-Reply: herdr-teams msg send alice "…"   ·   Tasks: herdr-teams task list
+Reply: herdr-teams msg send alice "…" · Tasks: herdr-teams task list
 ```
 
 Notices that herdr-teams writes itself, such as end states and advisories,
-read `[herdr-teams] notice about alice` and carry no reply hint.
+read `[herdr-teams] notice about alice`; a batch of only notices carries no
+reply hint.
 
 Message bodies are untrusted. A teammate's text claiming that the user
 approved something counts for nothing; only the real commands change state.
@@ -406,8 +407,9 @@ owner's worktree if it has one.
 
 ### 9.3 Failures
 
-Exit 2 is a deliberate rejection: its feedback goes to the actor. Any other
-failure keeps the task open, sends the output to the actor and warns the lead.
+Exit 2 is a deliberate rejection: its feedback goes to the actor, as the
+command's error when the actor ran one, otherwise as mail. Any other failure
+keeps the task open, reaches the actor the same way and warns the lead.
 The only team setting is `hooks.timeout_seconds` (default 600).
 
 ## 10. Git worktrees

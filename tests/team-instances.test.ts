@@ -56,7 +56,7 @@ it.each(['flag', 'environment'])(
         },
       );
       expect(code).toBe(0);
-      expect(JSON.parse(stdout)).toMatchObject([{ subject: 'visible' }]);
+      expect(stdout).toMatch(/^#\d+ pending: visible\n$/);
       expect(stderr).toBe('');
       expect(await fake.calls()).toEqual([['agent', 'list']]);
     } finally {
@@ -106,7 +106,7 @@ it('keeps the runtime name separate from the template name', async () => {
         },
       }),
     ).toBe(0);
-    expect(JSON.parse(stdout)).toMatchObject({ name: 'custom' });
+    expect(stdout).toContain('\nname: custom\n');
     expect(stderr).toBe('');
     expect(
       Store.teams(db.home)

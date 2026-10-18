@@ -8,7 +8,7 @@ export function installPlanCommands(
   output: Output,
 ) {
   const plan = group(program, 'plan');
-  const print = printer(output);
+  const print = printer(output, program);
   const context = (command: Command, privileged = false) => {
     const { db, actor } = teamContext(command, env, privileged);
     return { plans: new Plans(db, env), actor };
