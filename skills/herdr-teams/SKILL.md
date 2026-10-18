@@ -82,7 +82,8 @@ herdr-teams team list
 - `--model <model>`
 - `--thinking off|minimal|low|medium|high|xhigh` (not for `opencode`)
 - `--agent <definition>`: load a definition from `.herdr/agents/`
-- `--placement split|tab|workspace` (default `split`; four per team tab)
+- `--placement split|tab|workspace` (default `split`: the first four
+  teammates beside the lead in its tab, then team tabs of four)
 - `--worktree shared|dedicated|auto`
 - `--plan-mode`
 - `--prompt <text>`: required
@@ -196,7 +197,7 @@ feature:
   plan_approval: lead # or none
   worktree_requests: lead # or auto
   supervisor:
-    mode: pane # pane, tab or off
+    mode: tab # tab (default), pane (split beside the lead) or off
     tick_seconds: 30
     no_progress_minutes: 10 # 0 disables an advisory
     needs_input_minutes: 2
