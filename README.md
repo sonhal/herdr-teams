@@ -52,13 +52,18 @@ scripted fake herdr executable; no agents or API keys are needed.
 ```sh
 export HERDR_TEAMS_HOME="$PWD/.teams-state"
 ./bin/herdr-teams team create demo --lead lead
-export HERDR_TEAMS_TEAM=demo
+export HERDR_TEAMS_TEAM="<id returned by team create>"
 ./bin/herdr-teams task add "Implement authentication" --description "Add login"
 ./bin/herdr-teams task claim 1
 ./bin/herdr-teams task complete 1 --result "Login implemented"
 ./bin/herdr-teams msg send lead "Ready for review"
 ./bin/herdr-teams inbox
 ```
+
+`team create` and `team start` return an instance UUID in `id` and a display
+`name`. Select the UUID with `HERDR_TEAMS_TEAM` or `--team`; a display name also
+works when it identifies exactly one team in the state directory. Multiple
+instances may share a name, so use their IDs when names are ambiguous.
 
 `task dep add <task> <prerequisite>` blocks claims until the prerequisite is
 completed. `task assign`, `task release`, dependency edits and task edits are
@@ -95,8 +100,11 @@ four teammates beside the lead in its tab, then in team tabs of four;
 `--placement tab|workspace` gives a member its own
 location. All panes open without taking focus. `--model` and `--thinking`
 override team defaults. Use `--worktree dedicated` for an isolated checkout, or `auto` to start shared.
-In herdr, a teammate's agent is named `<team>-<name>`, so teams in one herdr
-session can reuse member names; the two together must fit in 32 characters.
+In herdr, a new teammate's agent name includes a four-character suffix derived
+from its instance ID and member name. The readable `<team>-<member>` prefix is
+trimmed to 27 characters so the full name fits in 32. The untrimmed combination
+must also fit in 32 characters. Use the member name in herdr-teams commands;
+the stored herdr agent name is handled automatically.
 
 A shutdown request waits for the member to accept or reject it. Accepted requests
 exit the CLI when idle and close the pane only after exit is observed. `done`

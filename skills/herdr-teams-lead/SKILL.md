@@ -16,13 +16,16 @@ Install the launcher once so `herdr-teams` is on your `PATH`:
 `herdr plugin action invoke herdr-teams.install-shim`. Run commands from the
 lead pane, where herdr sets `HERDR_PANE_ID`.
 
-| Variable            | Meaning                                        |
-| ------------------- | ---------------------------------------------- |
-| `HERDR_TEAMS_TEAM`  | Team name. `--team <name>` overrides it.       |
-| `HERDR_TEAMS_AGENT` | Member name. Leave it unset as the lead.       |
-| `HERDR_TEAMS_HOME`  | State directory. Inside herdr, leave it unset. |
+| Variable            | Meaning                                                      |
+| ------------------- | ------------------------------------------------------------ |
+| `HERDR_TEAMS_TEAM`  | Instance UUID or unique display name. `--team` overrides it. |
+| `HERDR_TEAMS_AGENT` | Member name. Leave it unset as the lead.                     |
+| `HERDR_TEAMS_HOME`  | State directory. Inside herdr, leave it unset.               |
 
-Teammates receive these and the CLI on `PATH` at spawn. Commands print JSON.
+Teammates receive the instance UUID and the CLI on `PATH` at spawn. Commands
+print JSON. `team create` and `team start` return an `id` and a display `name`;
+use the `id` to select the instance. A display name works only when it matches
+one team in the state directory; ambiguous names fail with the matching IDs.
 
 ## Authority
 
@@ -42,7 +45,7 @@ Create a team from the lead pane, then spawn members:
 
 ```sh
 herdr-teams team create demo
-export HERDR_TEAMS_TEAM=demo
+export HERDR_TEAMS_TEAM="<id returned by team create>"
 herdr-teams spawn alice --kind codex --thinking high --prompt "Implement login"
 herdr-teams spawn rev --agent reviewer --prompt "Review alice's work"
 herdr-teams team list
@@ -163,9 +166,12 @@ fail when the definition is loaded.
 Templates live in `.herdr/teams.yaml` (project) or
 `~/.config/herdr-teams/teams.yaml` (global). Each top-level key is a template
 name; a project template replaces a global one of the same name. Template,
-member and definition names match `^[a-z][a-z0-9_-]{0,31}$`. herdr names a
-teammate `<team>-<member>`, which must fit in 32 characters; `team start`
-refuses a template that breaks this before creating the team.
+member and definition names match `^[a-z][a-z0-9_-]{0,31}$`. The runtime
+`<team>-<member>` must fit in 32 characters; `team start` checks this before
+creating the team. New herdr agent names append a four-character suffix derived
+from the instance ID and member, trimming the readable prefix to 27 characters.
+Use member names such as `alice` in herdr-teams commands; do not construct herdr
+agent names yourself.
 
 ```yaml
 feature:
@@ -231,7 +237,8 @@ Inside herdr, `herdr plugin action invoke herdr-teams.start-team` starts a
 template from the workspace. `team save` writes generated definitions under
 `agents/` and the template into `teams.yaml` for that scope, without pane IDs
 or task run state. A failed start keeps its team and launch records; read them
-with `status` and `log` before retrying under a new `--name`.
+with `status` and `log`, selecting its `id`. Every start creates a new instance;
+`--name` sets its display name and may repeat.
 
 ## Quality-gate hooks
 
