@@ -101,10 +101,10 @@ herdr **tabs** or **workspaces**.
 | D4 | Agents use the team through a **`herdr-teams` CLI** (works from any agent's shell), taught by an injected instruction block/skill. An **MCP server** wrapping the same core comes later for typed tools. | (assumed) |
 | D5 | **TypeScript on Node ≥ 20**: same ecosystem as pi-teams, Node is near-universal, and the manifest `[[build]]` runs `npm ci && npm run build`. | (assumed) |
 | D6 | Config in `.herdr/` (project) and `~/.config/herdr-teams/` (global). Agent definitions are also **read** from `.pi/agents/` and `.claude/agents/` for compatibility. | (assumed) |
-| D9 | **Launch mechanism A:** teammates start in a normal shell pane through `herdr agent start`. That keeps your shell environment and works for every agent kind. The argv plugin pane (pi-herdr-subagents) was considered and rejected. | **confirmed** |
-| D10 | **Supervisor = a dedicated plugin pane**, configured per team (`supervisor.mode: pane|tab|off`, thresholds). It defaults to `pane` and is included in every example template. | **confirmed** |
 | D7 | **Light enforcement.** Plan mode is a prompt convention plus a team setting, not a sandbox. Determinism goes only where it's cheap and clearly useful: task locking, quality-gate exit codes, and never typing into a `blocked` agent. | **confirmed** |
 | D8 | **Live supervision** is a core feature: herdr state, stall advisories, interrupt with context kept, steering and urgent messages (§10). | **confirmed** |
+| D9 | **Launch mechanism A:** teammates start in a normal shell pane through `herdr agent start`. That keeps your shell environment and works for every agent kind. The argv plugin pane (pi-herdr-subagents) was considered and rejected. | **confirmed** |
+| D10 | **Supervisor = a dedicated plugin pane**, configured per team (`supervisor.mode: pane|tab|off`, thresholds). It defaults to `pane` and is included in every example template. | **confirmed** |
 
 ## 4. Architecture
 
