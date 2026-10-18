@@ -102,6 +102,7 @@ herdr **tabs** or **workspaces**.
 | D5 | **TypeScript on Node ≥ 20**: same ecosystem as pi-teams, Node is near-universal, and the manifest `[[build]]` runs `npm ci && npm run build`. | (assumed) |
 | D6 | Config in `.herdr/` (project) and `~/.config/herdr-teams/` (global). Agent definitions are also **read** from `.pi/agents/` and `.claude/agents/` for compatibility. | (assumed) |
 | D9 | **Launch mechanism A:** teammates start in a normal shell pane through `herdr agent start`. That keeps your shell environment and works for every agent kind. The argv plugin pane (pi-herdr-subagents) was considered and rejected. | **confirmed** |
+| D10 | **Supervisor = a dedicated plugin pane**, configured per team (`supervisor.mode: pane|tab|off`, thresholds). It defaults to `pane` and is included in every example template. | **confirmed** |
 | D7 | **Light enforcement.** Plan mode is a prompt convention plus a team setting, not a sandbox. Determinism goes only where it's cheap and clearly useful: task locking, quality-gate exit codes, and never typing into a `blocked` agent. | **confirmed** |
 | D8 | **Live supervision** is a core feature: herdr state, stall advisories, interrupt with context kept, steering and urgent messages (§10). | **confirmed** |
 
@@ -396,6 +397,11 @@ auth-squad:
   lead: { kind: claude, model: opus }
   defaults: { kind: claude, thinking: medium, worktree: auto }
   hooks: { failure_action: reopen_followup, max_reopens: 2 }
+  plan_approval: lead
+  supervisor:             # on by default; shown here as the de facto example
+    mode: pane            # pane | tab | off
+    no_progress_minutes: 10
+    on_no_progress: notify
   members:
     - name: alice
       agent: builder
@@ -562,25 +568,6 @@ Other notice paths:
   `herdr-teams report`...") before telling the lead. The default is
   `notify`.
 
-### 10.4 The supervisor process
-
-Event hooks can't notice that *nothing* happened, and herdr plugins can't run
-background daemons. So each team has one **supervisor**: a small Node process
-in its own narrow pane in the team tab (`herdr-teams supervise`), opened as a
-plugin `[[panes]]` entrypoint. It shows a one-line status, and its lifetime
-is tied to the pane, as herdr requires.
-
-- **Events:** it holds an `events.subscribe` socket connection for
-  `pane.agent_status_changed`, `pane.exited`, `pane.closed`, `pane.moved`
-  and `pane.focused` on member panes. On `events_lost` it resubscribes and
-  reconciles from `session.snapshot`, following herdr's documented recovery
-  steps.
-- **Clock:** a ~30 s tick for stall checks and screen-hash sampling.
-- **Fallback:** if the supervisor is closed, the manifest event hooks and
-  the CLI reconciliation still deliver mail and record state. Only
-  time-based advisories pause, and the board shows "supervisor offline".
-  The `[[startup]]` hook reopens it after a herdr restart.
-
 ### 10.3 Correcting a running agent
 
 Four levels, from gentlest to strongest. The lead uses them through the CLI;
@@ -609,6 +596,48 @@ Authority: any member can send urgent messages. Only the lead (or you, from
 outside the team) can `interrupt`, `task release` or `kill` another member.
 This is checked by caller identity (§4.1). It's a guardrail, not a security
 boundary.
+
+### 10.4 The supervisor process
+
+Event hooks can't notice that *nothing* happened, and herdr plugins can't run
+background daemons. So a team can have one **supervisor**: a small Node
+process in its own dedicated pane (`herdr-teams supervise`), opened as a
+plugin `[[panes]]` entrypoint. It shows a one-line status (`supervisor · 3
+members · 1 advisory`), and its lifetime is tied to the pane, as herdr
+requires.
+
+It is a **team setting**, on by default and spelled out in every example
+template (D10):
+
+```yaml
+supervisor:
+  mode: pane            # pane (default) | tab | off
+  tick_seconds: 30
+  no_progress_minutes: 10   # 0 disables that advisory
+  needs_input_minutes: 2
+  unknown_minutes: 5
+  on_no_progress: notify    # notify | nudge
+```
+
+- `pane`: a narrow pane in the team tab, next to the teammates.
+- `tab`: a separate `team:<name>:system` tab, which keeps the teammate tab
+  agents-only.
+- `off`: no supervisor. Events come only through the manifest hooks, and
+  there are no time-based advisories. Suited to small or short-lived teams.
+
+`herdr-teams team start` opens the supervisor first. `herdr-teams supervise
+--team <t>` reopens it by hand if it was closed.
+
+- **Events:** it holds an `events.subscribe` socket connection for
+  `pane.agent_status_changed`, `pane.exited`, `pane.closed`, `pane.moved`
+  and `pane.focused` on member panes. On `events_lost` it resubscribes and
+  reconciles from `session.snapshot`, following herdr's documented recovery
+  steps.
+- **Clock:** a ~30 s tick for stall checks and screen-hash sampling.
+- **Fallback:** if the supervisor is closed or `off`, the manifest event
+  hooks and the CLI reconciliation still deliver mail and record state. Only
+  time-based advisories pause, and the board shows "supervisor offline".
+  The `[[startup]]` hook reopens it after a herdr restart.
 
 ## 11. Board pane and observability
 
