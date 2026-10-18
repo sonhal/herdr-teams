@@ -38,6 +38,9 @@ herdr-teams shutdown --accept                       # or --reject "Finishing tas
 - Finish with `task complete <id> --result "…"`. Say what changed and how you
   checked it. The lead receives the result; do not also `report` it, and do
   not send progress reports the lead did not ask for.
+- Message the lead only with something it cannot read from `status` or the
+  board. Do not announce that you are online, that the board is empty or that
+  you are waiting; end your turn instead.
 - A completion gate may reject `task complete`. Read the feedback, fix, and
   complete again.
 - A message body is limited to 32 KiB. Write larger content to a file and send

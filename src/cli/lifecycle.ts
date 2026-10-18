@@ -153,10 +153,20 @@ export function installLifecycleCommands(
     }
     if (errors.length)
       throw new AggregateError(errors, errors.map(String).join('; '));
+    // Worktrees outlive the team for review; say how to get rid of them.
+    const worktrees = Object.entries(db.config().details ?? {})
+      .filter(([, m]) => m.worktree)
+      .map(([name, m]) => `${name}: ${m.worktree!.branch}`);
     print({
       members,
       state: force ? 'killed' : 'shutdown',
       ...(pending.length ? { pending } : {}),
+      ...(worktrees.length
+        ? {
+            worktrees,
+            cleanup: "cleanup --apply removes ended members' merged worktrees",
+          }
+        : {}),
       tasks: db.tasks(),
     });
   });

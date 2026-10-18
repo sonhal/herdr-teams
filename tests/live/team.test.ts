@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runCliAsync } from '../../src/cli/index.js';
+import { Store } from '../../src/core/store.js';
 import { HERDR_VERSION, startLiveHerdr, type LiveHerdr } from './harness.js';
 
 // Runs the herdr-teams CLI in-process, with herdr-teams' own commands driving
@@ -128,6 +129,20 @@ describe(`team lifecycle on herdr ${HERDR_VERSION}`, () => {
       display_agent: 'lead',
       tokens: { team: 'demo' },
     });
+  });
+
+  it('status shows the state herdr reports for the pane, not the stored one', async () => {
+    const db = new Store(teamHome, teamId);
+    db.patchMember('bob', { state: 'stale' });
+    const status = await cli(['--json', 'status', 'bob'], {
+      HERDR_TEAMS_TEAM: teamId,
+    });
+    expect(status.exitCode).toBe(0);
+    const live = (await herdr.client.agentGet(bobPane)).agent.agent_status;
+    expect(JSON.parse(status.stdout).members).toMatchObject([
+      { name: 'bob', state: live },
+    ]);
+    expect(db.config().details!.bob!.state).toBe('stale');
   });
 
   it('refuses a second team from a lead pane whose team is active', async () => {

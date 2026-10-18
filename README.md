@@ -110,9 +110,9 @@ exits. Check `status` for pending shutdowns.
 
 To request one member's shutdown, run `shutdown alice`. To stop immediately,
 `done --force` stops all remaining teammates, or `kill alice` stops one;
-both return their active tasks to pending. Worktrees are kept for review.
-`cleanup` lists ended members' worktrees, and `cleanup --apply` removes only
-those eligible for safe removal.
+both return their active tasks to pending. Worktrees are kept for review, and
+`done` lists them. `cleanup` lists ended members' worktrees, and
+`cleanup --apply` removes the clean, merged ones and their branches.
 
 ## Develop
 

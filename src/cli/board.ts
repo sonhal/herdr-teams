@@ -9,7 +9,35 @@ import { readSelectedIdentity } from './identity.js';
 import { group, teamContext, type Output } from './context.js';
 import { runCliAsync } from './index.js';
 import { Config } from '../core/config.js';
-import { HerdrClient } from '../herdr/index.js';
+import { HerdrClient, type AgentInfo } from '../herdr/index.js';
+import { liveMember } from '../runtime/delivery.js';
+
+/**
+ * herdr's status for each running teammate. Stored state changes only when a
+ * hook or command reconciles, so it can lag behind the pane. Read-only: ending
+ * members and mailing the lead stay with reconcile. Pane IDs mean nothing in
+ * another herdr session, and status still prints when herdr is unreachable.
+ */
+async function liveStates(
+  db: Store,
+  env: NodeJS.ProcessEnv,
+): Promise<Record<string, string>> {
+  const team = db.config();
+  if (!team.herdr_socket || team.herdr_socket !== env.HERDR_SOCKET_PATH)
+    return {};
+  let agents: AgentInfo[];
+  try {
+    agents = (await new HerdrClient({ env }).agentList()).agents;
+  } catch {
+    return {};
+  }
+  const states: Record<string, string> = {};
+  for (const [name, member] of Object.entries(team.details ?? {}))
+    if (!member.ended && member.state !== 'starting')
+      states[name] =
+        liveMember(team, name, agents)?.agent_status ?? 'not-running';
+  return states;
+}
 
 export function installBoardCommands(
   program: Command,
@@ -18,8 +46,9 @@ export function installBoardCommands(
 ) {
   const context = (command: Command) => teamContext(command, env).db;
   const status = program.command('status [member]');
-  status.action((member?: string) => {
-    const data = snapshot(context(status));
+  status.action(async (member?: string) => {
+    const db = context(status);
+    const data = snapshot(db, Date.now(), await liveStates(db, env));
     if (member) {
       if (!data.members.some((m) => m.name === member))
         throw new Error('Unknown member');
@@ -38,11 +67,12 @@ export function installBoardCommands(
   board.action(async () => {
     const db = context(board);
     if (board.optsWithGlobals<{ json?: boolean }>().json) {
-      output(JSON.stringify(snapshot(db), null, 2) + '\n');
+      const live = await liveStates(db, env);
+      output(JSON.stringify(snapshot(db, Date.now(), live), null, 2) + '\n');
       return;
     }
     if (board.opts<{ once?: boolean }>().once) {
-      output(renderBoard(snapshot(db)));
+      output(renderBoard(snapshot(db, Date.now(), await liveStates(db, env))));
       return;
     }
     await terminalBoard(

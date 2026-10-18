@@ -122,6 +122,7 @@ it('claims only an unblocked task and queues its prompt durably', async () => {
 
 it('coalesces completed-turn reports using completion sequence', async () => {
   const db = setup();
+  db.change(db.add('Add login').id, 'claim', 'alice');
   const completed = jsonReply({ type: 'agent_list', agents: [agent] });
   const fake = await fakeHerdr([completed, completed]);
   try {
@@ -622,6 +623,7 @@ it('event hooks wake the lead with one completion report across repeated events'
       alice: { kind: 'codex', pane_id: idle.pane_id, state: 'working' },
     };
   });
+  db.change(db.add('Add login').id, 'claim', 'alice');
   const lead = { ...idle, name: 'current-lead', pane_id: 'w1:p1' };
   const completed = { ...idle, completion_seq: 1 };
   const agents = jsonReply({ type: 'agent_list', agents: [lead, completed] });
@@ -715,6 +717,7 @@ it('runs teammate_idle hooks without holding delivery for later events', async (
   db.updateTeam((team) => {
     team.repository_dir = home;
   });
+  db.change(db.add('Add login').id, 'claim', 'alice');
   const marker = join(home, 'started');
   const hooks = join(home, '.herdr', 'teams', 'hooks');
   mkdirSync(hooks, { recursive: true });

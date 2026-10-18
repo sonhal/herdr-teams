@@ -3,7 +3,12 @@ import { Store } from '../core/store.js';
 export function plain(value: string): string {
   return stripVTControlCharacters(value).replace(/[\r\n\t]/g, ' ');
 }
-export function snapshot(db: Store, now = Date.now()) {
+/** `live` maps a running teammate to herdr's current status for it. */
+export function snapshot(
+  db: Store,
+  now = Date.now(),
+  live: Record<string, string> = {},
+) {
   const team = db.config();
   const tasks = db.tasks();
   const delivery = db.deliveryState();
@@ -13,15 +18,16 @@ export function snapshot(db: Store, now = Date.now()) {
       (t) => t.owner === name && ['planning', 'in_progress'].includes(t.status),
     );
     const unread = db.unread(name, delivery).length;
+    const current = live[name] ?? details?.state;
     const state =
       details?.ended ??
-      (details?.interrupted && details.state !== 'working'
+      (details?.interrupted && current !== 'working'
         ? 'interrupted'
         : owned.some(
               (t) => t.status === 'planning' && t.plan?.verdict === 'pending',
             )
           ? 'waiting-plan'
-          : (details?.state ?? 'unknown'));
+          : (current ?? 'unknown'));
     return {
       name,
       state,

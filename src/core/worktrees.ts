@@ -63,7 +63,17 @@ export class Worktrees {
       } catch {
         /* A new branch is required. */
       }
-      if (exists) throw new Error(`Branch ${branch} already exists`);
+      if (exists) {
+        // Another team with this display name left it, often after a failed
+        // launch; nothing in this team's state records it.
+        const path = git(repo, 'worktree', 'list', '--porcelain')
+          .split('\n\n')
+          .find((entry) => entry.includes(`\nbranch refs/heads/${branch}`))
+          ?.match(/^worktree (.*)$/m)?.[1];
+        throw new Error(
+          `Branch ${branch} already exists, probably left by an earlier team named ${team.name}. Start this team with another --name, or, if that work is not needed, remove it: ${path ? `git worktree remove ${JSON.stringify(path)} && ` : ''}git branch -D ${branch}`,
+        );
+      }
       if (git(repo, 'status', '--porcelain=v1'))
         this.warn(
           `warning: the lead checkout has uncommitted changes; ${member}'s worktree contains committed files only\n`,

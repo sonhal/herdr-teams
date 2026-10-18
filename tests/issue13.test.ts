@@ -120,7 +120,7 @@ it('sends no turn report when the teammate messaged the lead and no task changed
   expect(db.deliveryState().reports.alice).toBe(1);
 });
 
-it('reports a silent turn only for the spawn prompt or an active task', async () => {
+it('reports a silent turn only while the teammate holds an active task', async () => {
   const db = setup();
   const h = harness();
   h.setLive({ ...agent, completion_seq: 1 });
@@ -133,7 +133,6 @@ it('reports a silent turn only for the spawn prompt or an active task', async ()
   await reconcile(db, h.client);
   const reports = db.inbox('lead').filter((m) => m.kind === 'report');
   expect(reports.map((m) => m.body)).toEqual([
-    'alice stopped without messaging you.\nPeek: herdr-teams peek alice',
     `alice stopped without messaging you while holding:\n#${task.id} in_progress: Add login\nPeek: herdr-teams peek alice`,
   ]);
   expect(h.calls.some((c) => c[1] === 'read')).toBe(false);
@@ -170,7 +169,7 @@ it('reports every new completion after a member respawns', async () => {
     h.setLive({ ...agent, pane_id: 'w1:p3', completion_seq });
     await reconcile(db, h.client);
   }
-  expect(db.inbox('lead').filter((m) => m.kind === 'report')).toHaveLength(4);
+  expect(db.inbox('lead').filter((m) => m.kind === 'report')).toHaveLength(3);
   expect(db.deliveryState().idle_hooks!.alice).toBe(3);
 });
 

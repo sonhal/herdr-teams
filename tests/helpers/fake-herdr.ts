@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CommandOutput } from '../../src/herdr/index.js';
 
-export type Reply = Partial<CommandOutput>;
+/** `exec` runs a command first, standing in for herdr's side effects. */
+export type Reply = Partial<CommandOutput> & { exec?: string[] };
 
 /** A real subprocess test double. No herdr server, socket, or agent CLI is needed. */
 export async function fakeHerdr(replies: Reply[]) {
@@ -22,6 +23,7 @@ const replies = JSON.parse(fs.readFileSync(${JSON.stringify(state)}, 'utf8'));
 const reply = replies.shift();
 if (!reply) { process.stderr.write('No scripted reply'); process.exit(99); }
 fs.writeFileSync(${JSON.stringify(state)}, JSON.stringify(replies));
+if (reply.exec) require('node:child_process').execFileSync(reply.exec[0], reply.exec.slice(1));
 fs.writeFileSync(1, reply.stdout ?? '');
 fs.writeFileSync(2, reply.stderr ?? '');
 if (reply.signal) process.kill(process.pid, reply.signal);

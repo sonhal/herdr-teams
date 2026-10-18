@@ -51,7 +51,10 @@ export function installWorktreeCommands(
   );
   const cleanup = program
     .command('cleanup')
-    .option('--apply', 'remove clean, merged worktrees of ended members');
+    .option(
+      '--apply',
+      'remove clean, merged worktrees of ended members and their branches',
+    );
   cleanup.action(async () => {
     const { db, trees } = context(cleanup);
     const candidates = Object.entries(db.config().details ?? {})
@@ -63,7 +66,8 @@ export function installWorktreeCommands(
       ? await each(
           candidates.map((name) => [name, name] as [string, string]),
           async (name) => {
-            await trees.remove(name);
+            // A merged branch only blocks a later team of the same name.
+            await trees.remove(name, { deleteBranch: true });
           },
         ).catch((error: unknown) => error as Error)
       : undefined;

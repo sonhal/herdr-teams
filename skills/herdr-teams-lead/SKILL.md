@@ -100,8 +100,9 @@ herdr-teams board            # interactive; use board --once for a snapshot
 An agent blocked on a permission or question prompt must have it answered in
 its pane before steer or interrupt. `task complete` sends you the task's result
 and, for a dedicated worktree, its branch state. A teammate's turn that ends
-without a message to you is reported only on its first turn or while it holds
-an active task; `peek` shows its pane. There is no periodic stall detection.
+without a message to you is reported only while it holds an active task;
+`status` shows herdr's live state for the others, and `peek` shows its pane.
+There is no periodic stall detection.
 
 Worktrees, for teammates spawned with `--worktree dedicated`:
 
