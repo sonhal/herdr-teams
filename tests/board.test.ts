@@ -8,7 +8,7 @@ import { boardAction } from '../src/board/terminal.js';
 import { syncSidebar } from '../src/supervisor/sidebar.js';
 import { runCliAsync } from '../src/cli/index.js';
 import { HerdrClient } from '../src/herdr/index.js';
-import { fakeHerdr, jsonReply } from './helpers/fake-herdr.js';
+import { fakeHerdr } from './helpers/fake-herdr.js';
 const homes: string[] = [];
 afterEach(() =>
   homes.splice(0).forEach((p) => rmSync(p, { recursive: true, force: true })),
@@ -97,11 +97,12 @@ it('updates sidebar labels only when their content changes', async () => {
   const db = setup();
   const task = db.add('Review');
   db.change(task.id, 'claim', 'alice');
+  // herdr v0.9.5: pane and workspace report-metadata print nothing on success.
   const fake = await fakeHerdr([
-    jsonReply({ type: 'ok' }),
-    jsonReply({ type: 'ok' }),
-    jsonReply({ type: 'ok' }),
-    jsonReply({ type: 'ok' }),
+    { stdout: '' },
+    { stdout: '' },
+    { stdout: '' },
+    { stdout: '' },
   ]);
   try {
     const client = new HerdrClient({ env: fake.env });

@@ -32,7 +32,9 @@ function setup() {
 const location = jsonReply({ type: 'tab_created', root_pane: pane });
 const started = jsonReply({ type: 'agent_started', agent, argv: ['codex'] });
 const prompted = jsonReply({ type: 'agent_prompted', agent });
-const metadata = jsonReply({ type: 'pane_info', pane });
+// herdr v0.9.5 src/cli/pane/bindings.rs: report-metadata is Output::Quiet,
+// so success prints nothing.
+const metadata = { stdout: '' };
 it('launches Codex with isolated identity, model, effort and attributed bootstrap', async () => {
   const db = setup();
   const fake = await fakeHerdr([

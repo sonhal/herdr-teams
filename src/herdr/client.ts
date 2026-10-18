@@ -141,6 +141,10 @@ export class HerdrClient {
       throw new HerdrProtocolError('Invalid herdr response');
     return response.result;
   }
+  /** For herdr's quiet commands, which print nothing on success; errors still raise. */
+  async quiet(argv: string[]): Promise<void> {
+    await this.invoke(argv);
+  }
   async createLocation(
     kind: 'tab' | 'workspace',
     label: string,
