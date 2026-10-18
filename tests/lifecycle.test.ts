@@ -1,7 +1,15 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { runCliAsync } from '../src/cli/index.js';
 import { Lifecycle } from '../src/core/lifecycle.js';
 import { Store } from '../src/core/store.js';
 import { HerdrClient } from '../src/herdr/index.js';
@@ -182,4 +190,44 @@ it('uses an overflow tab after four split members without stealing focus', async
   } finally {
     await fake.cleanup();
   }
+});
+
+describe('install-shim action', () => {
+  it('links the shim once, reports through herdr, and keeps foreign files', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'shim-'));
+    const fake = await fakeHerdr([
+      jsonReply({ type: 'ok' }),
+      jsonReply({ type: 'ok' }),
+      jsonReply({ type: 'ok' }),
+    ]);
+    const run = (directory: string) =>
+      runCliAsync(['_action', 'install-shim', '--directory', directory], {
+        version: 'test',
+        env: { ...fake.env, HOME: home, HERDR_PLUGIN_ROOT: '/plugin-root' },
+        stdout: () => {},
+        stderr: () => {},
+      });
+    try {
+      const bin = join(home, 'bin');
+      expect(await run(bin)).toBe(0);
+      expect(readlinkSync(join(bin, 'herdr-teams'))).toBe(
+        '/plugin-root/bin/herdr-teams',
+      );
+      expect(await run(bin)).toBe(0);
+      const other = join(home, 'other');
+      mkdirSync(other);
+      writeFileSync(join(other, 'herdr-teams'), 'mine');
+      expect(await run(other)).toBe(1);
+      expect(readFileSync(join(other, 'herdr-teams'), 'utf8')).toBe('mine');
+      const titles = (await fake.calls()).map((c) => c[2]);
+      expect(titles).toEqual([
+        'herdr-teams command installed',
+        'herdr-teams command installed',
+        'herdr-teams command not installed',
+      ]);
+    } finally {
+      await fake.cleanup();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
 });

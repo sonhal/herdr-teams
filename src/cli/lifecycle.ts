@@ -1,4 +1,4 @@
-import { mkdirSync, symlinkSync } from 'node:fs';
+import { lstatSync, mkdirSync, readlinkSync, symlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Config } from '../core/config.js';
@@ -45,11 +45,65 @@ export function installLifecycleCommands(
     'directory on PATH',
     join(homedir(), '.local', 'bin'),
   );
-  shim.action(() => {
-    const directory = resolve(shim.opts<{ directory: string }>().directory);
+  /** Links the shim; never overwrites anything but its own earlier link. */
+  function installShim(directory: string) {
     mkdirSync(directory, { recursive: true });
     const target = join(directory, 'herdr-teams');
-    symlinkSync(join(pluginRoot(env), 'bin', 'herdr-teams'), target);
+    const source = join(pluginRoot(env), 'bin', 'herdr-teams');
+    try {
+      symlinkSync(source, target);
+    } catch (error) {
+      if (
+        (error as NodeJS.ErrnoException).code !== 'EEXIST' ||
+        !lstatSync(target).isSymbolicLink() ||
+        readlinkSync(target) !== source
+      )
+        throw new Error(
+          `${target} already exists; remove it or pick --directory`,
+        );
+    }
+    return target;
+  }
+  shim.action(() => {
+    const target = installShim(
+      resolve(shim.opts<{ directory: string }>().directory),
+    );
+    print({ path: target, instruction: 'Ensure this directory is on PATH' });
+  });
+  // herdr runs actions with HERDR_PLUGIN_ROOT set but shows only a log, so
+  // the outcome is reported as a herdr notification.
+  const actions = program.commands.find((c) => c.name() === '_action')!;
+  const shimAction = actions
+    .command('install-shim')
+    .option(
+      '--directory <path>',
+      'directory on PATH',
+      join(homedir(), '.local', 'bin'),
+    );
+  shimAction.action(async () => {
+    const client = new HerdrClient({ env });
+    let target: string;
+    try {
+      target = installShim(
+        resolve(shimAction.opts<{ directory: string }>().directory),
+      );
+    } catch (error) {
+      await client.command([
+        'notification',
+        'show',
+        'herdr-teams command not installed',
+        '--body',
+        error instanceof Error ? error.message : String(error),
+      ]);
+      throw error;
+    }
+    await client.command([
+      'notification',
+      'show',
+      'herdr-teams command installed',
+      '--body',
+      `Linked ${target}. Make sure its directory is on PATH.`,
+    ]);
     print({ path: target, instruction: 'Ensure this directory is on PATH' });
   });
   const spawn = replace('spawn', 'spawn <name>')
