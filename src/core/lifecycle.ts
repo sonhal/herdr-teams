@@ -3,7 +3,7 @@ import { adapter, KINDS } from '../adapters/index.js';
 import { HerdrClient, HerdrApiError, type PaneInfo } from '../herdr/index.js';
 import { Worktrees } from './worktrees.js';
 import { pluginRoot } from './paths.js';
-import { Store, type Team } from './store.js';
+import { Store, newAgentName, type Team } from './store.js';
 
 export interface SpawnOptions {
   definition?: string;
@@ -69,6 +69,7 @@ export class Lifecycle {
         'lead',
       interactive: options.interactive ?? team.defaults?.interactive ?? false,
     };
+    const agentName = newAgentName(team.name, member);
     const kind =
       options.kind ?? team.defaults?.kind ?? (await this.currentKind());
     const model = options.model ?? team.defaults?.model;
@@ -83,11 +84,6 @@ export class Lifecycle {
     if (!['split', 'tab', 'workspace'].includes(placement))
       throw new Error('Invalid placement');
     if (!options.prompt.trim()) throw new Error('Spawn prompt is required');
-    const agentName = `${team.name}-${member}`;
-    if (agentName.length > 32)
-      throw new Error(
-        `herdr agent name ${agentName} exceeds 32 characters; use a shorter team or member name`,
-      );
     this.db.reserveMember(member, {
       kind,
       agent_name: agentName,

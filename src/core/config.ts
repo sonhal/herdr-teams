@@ -11,7 +11,7 @@ import { homedir } from 'node:os';
 import { randomUUID, createHash } from 'node:crypto';
 import { parse, stringify } from 'yaml';
 import { adapter } from '../adapters/index.js';
-import { Store, type Team } from './store.js';
+import { Store, newAgentName, type Team } from './store.js';
 import { Lifecycle, type SpawnOptions } from './lifecycle.js';
 import { Tasks } from './tasks.js';
 import { pluginRoot } from './paths.js';
@@ -309,6 +309,7 @@ export class Config {
     key(lead);
     if (template.members.some((m) => m.name === lead))
       throw new Error('Lead and teammate names must differ');
+    for (const member of template.members) newAgentName(db.team, member.name);
     const defaults = { ...template.lead, ...template.defaults };
     if (kind !== undefined) defaults.kind = kind;
     // Resolve a missing kind before creating anything, so a failure leaves no team.
