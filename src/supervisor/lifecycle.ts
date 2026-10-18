@@ -31,7 +31,8 @@ export async function syncMembers(
       return;
     }
     const live = agents.find(
-      (a) => a.name === name && a.pane_id === member.pane_id,
+      (a) =>
+        a.name === (member.agent_name ?? name) && a.pane_id === member.pane_id,
     );
     if (!live) {
       let output = '';
@@ -80,7 +81,10 @@ export async function syncMembers(
       !member.shutdown_exit_sent &&
       ['idle', 'done'].includes(live.agent_status)
     ) {
-      await client.agentPrompt(name, adapter(member.kind).exit);
+      await client.agentPrompt(
+        member.agent_name ?? name,
+        adapter(member.kind).exit,
+      );
       db.patchMember(name, { shutdown_exit_sent: true });
     }
   });

@@ -513,6 +513,39 @@ it('clips large hook output instead of failing after the hook ran', () => {
   expect(advisory.body).toContain('bytes omitted');
 });
 
+it('delivers to a teammate under its herdr name, not a same-named agent of another team', async () => {
+  const db = setup();
+  db.updateTeam((team) => {
+    team.details = {
+      alice: {
+        kind: 'codex',
+        agent_name: 'demo-alice',
+        pane_id: idle.pane_id,
+        state: 'idle',
+      },
+    };
+  });
+  db.send('lead', 'alice', 'hello');
+  const ours = { ...idle, name: 'demo-alice' };
+  const fake = await fakeHerdr([
+    jsonReply({
+      type: 'agent_list',
+      agents: [{ ...idle, name: 'alice', pane_id: 'w1:p9' }, ours],
+    }),
+    jsonReply({ type: 'agent_info', agent: ours }),
+    jsonReply({ type: 'agent_prompted', agent: ours }),
+  ]);
+  try {
+    await reconcile(db, new HerdrClient({ env: fake.env }));
+    const prompts = (await fake.calls()).filter((c) => c[1] === 'prompt');
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]![2]).toBe(idle.pane_id);
+    expect(prompts[0]![3]).toContain('hello');
+  } finally {
+    await fake.cleanup();
+  }
+});
+
 it('labels system notices as herdr-teams notices without a reply hint', async () => {
   const db = setup();
   db.send('alice', 'lead', 'alice: crashed\nlast output', false, 'advisory');

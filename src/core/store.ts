@@ -67,8 +67,18 @@ export interface Worktree {
 }
 export type EndState =
   'shut-down' | 'closed-by-user' | 'failed-to-launch' | 'crashed' | 'killed';
+/**
+ * herdr agent names are unique across a herdr session, which every team
+ * shares, so a teammate is registered as `<team>-<member>`.
+ */
+export function agentName(team: Team, member: string): string {
+  return team.details?.[member]?.agent_name ?? member;
+}
+
 export interface Member {
   kind: string;
+  /** Name in herdr; absent for teammates spawned before names carried the team. */
+  agent_name?: string;
   definition?: string;
   prompt?: string;
   instructions?: string;

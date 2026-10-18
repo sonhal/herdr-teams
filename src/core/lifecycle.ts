@@ -83,8 +83,14 @@ export class Lifecycle {
     if (!['split', 'tab', 'workspace'].includes(placement))
       throw new Error('Invalid placement');
     if (!options.prompt.trim()) throw new Error('Spawn prompt is required');
+    const agentName = `${team.name}-${member}`;
+    if (agentName.length > 32)
+      throw new Error(
+        `herdr agent name ${agentName} exceeds 32 characters; use a shorter team or member name`,
+      );
     this.db.reserveMember(member, {
       kind,
+      agent_name: agentName,
       prompt: options.prompt,
       ...(options.definition ? { definition: options.definition } : {}),
       ...(options.instructions ? { instructions: options.instructions } : {}),
@@ -147,7 +153,7 @@ export class Lifecycle {
         tab_id: pane.tab_id,
       });
       await this.client.agentStart({
-        name: member,
+        name: agentName,
         kind,
         pane: pane.pane_id,
         args: resolved.args,
@@ -163,9 +169,9 @@ export class Lifecycle {
         '--token',
         `team=${team.name}`,
       ]);
-      await this.client.agentPrompt(member, this.bootstrap(member, options));
+      await this.client.agentPrompt(agentName, this.bootstrap(member, options));
       const live = (await this.client.agentGet(pane.pane_id)).agent;
-      if (live.name !== member || live.pane_id !== pane.pane_id)
+      if (live.name !== agentName || live.pane_id !== pane.pane_id)
         throw new Error('Agent vanished during launch');
       this.db.patchMember(member, {
         state: live.agent_status,

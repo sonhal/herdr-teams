@@ -83,7 +83,10 @@ it('saves and restarts a team with equivalent roles, defaults and seed tasks', a
     jsonReply({ type: 'agent_started', agent, argv: ['codex'] }),
     jsonReply({ type: 'pane_info', pane }),
     jsonReply({ type: 'agent_prompted', agent }),
-    jsonReply({ type: 'agent_info', agent }),
+    jsonReply({
+      type: 'agent_info',
+      agent: { ...agent, name: 'restored-alice' },
+    }),
   ]);
   try {
     const restored = new Store(join(home, 'state'), 'restored');
