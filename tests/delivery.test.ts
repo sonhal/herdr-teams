@@ -160,6 +160,7 @@ it('rechecks live state before prompting', async () => {
 
 it('does not recursively quote generated reports on later turns', async () => {
   const db = setup();
+  db.change(db.add('Long task').id, 'claim', 'alice');
   const fake = await fakeHerdr([
     jsonReply({ type: 'agent_list', agents: [agent] }),
     { stdout: 'first output' },
@@ -754,4 +755,31 @@ it('runs teammate_idle hooks without holding delivery for later events', async (
   expect(Date.now() - started).toBeLessThan(1500);
   await first;
   expect(db.inbox('lead').filter((m) => m.kind === 'report')).toHaveLength(1);
+});
+
+it('inbox prints undelivered mail unless --all is given', async () => {
+  const db = setup();
+  db.send('lead', 'alice', 'delivered');
+  const fake = await fakeHerdr([list(), get, prompted]);
+  try {
+    await reconcile(db, new HerdrClient({ env: fake.env }));
+  } finally {
+    await fake.cleanup();
+  }
+  db.send('lead', 'alice', 'waiting');
+  const inbox = async (...flags: string[]) => {
+    let output = '';
+    expect(
+      await runCliAsync(['--team', db.id, 'inbox', ...flags], {
+        version: 'test',
+        env: { HERDR_TEAMS_HOME: db.home, HERDR_TEAMS_AGENT: 'alice' },
+        stdout: (s) => {
+          output += s;
+        },
+      }),
+    ).toBe(0);
+    return (JSON.parse(output) as { body: string }[]).map((m) => m.body);
+  };
+  expect(await inbox()).toEqual(['waiting']);
+  expect(await inbox('--all')).toEqual(['delivered', 'waiting']);
 });

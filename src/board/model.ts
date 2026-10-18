@@ -12,13 +12,7 @@ export function snapshot(db: Store, now = Date.now()) {
     const owned = tasks.filter(
       (t) => t.owner === name && ['planning', 'in_progress'].includes(t.status),
     );
-    const inbox = db.inbox(name);
-    const cursor = delivery.cursors[name];
-    const start = cursor ? inbox.findIndex((m) => m.id === cursor) + 1 : 0;
-    const acknowledged = new Set(delivery.acknowledged?.[name] ?? []);
-    const unread = inbox
-      .slice(start)
-      .filter((m) => !acknowledged.has(m.id)).length;
+    const unread = db.unread(name, delivery).length;
     const state =
       details?.ended ??
       (details?.interrupted && details.state !== 'working'

@@ -40,7 +40,7 @@ it('renders task states, owners, dependencies, unread mail without supervision',
   expect(data.members.find((m) => m.name === 'alice')).toMatchObject({
     state: 'idle',
     seconds: 60,
-    unread: 2,
+    unread: 1,
   });
   expect(text).not.toContain('supervisor');
   expect(text).toContain('#1 Review');

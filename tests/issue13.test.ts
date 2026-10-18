@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it } from 'vitest';
 import { Store, newAgentName } from '../src/core/store.js';
 import { Lifecycle } from '../src/core/lifecycle.js';
+import { Tasks } from '../src/core/tasks.js';
 import { HerdrClient } from '../src/herdr/index.js';
 import { reconcile } from '../src/runtime/delivery.js';
 import { applyEvent } from '../src/runtime/events.js';
@@ -119,27 +120,32 @@ it('sends no turn report when the teammate messaged the lead and no task changed
   expect(db.deliveryState().reports.alice).toBe(1);
 });
 
-it('points to the teammate’s message when its tasks changed that turn', async () => {
+it('reports a silent turn only for the spawn prompt or an active task', async () => {
   const db = setup();
   const h = harness();
-  const task = db.add('Add login');
-  db.change(task.id, 'claim', 'alice');
-  db.send('alice', 'lead', 'claimed login');
+  h.setOutput('spawn turn output');
   h.setLive({ ...agent, completion_seq: 1 });
   await reconcile(db, h.client);
-  db.send('alice', 'lead', 'still on login');
+  h.setOutput('acknowledged a message');
   h.setLive({ ...agent, completion_seq: 2 });
   await reconcile(db, h.client);
+  const task = db.add('Add login');
+  db.change(task.id, 'claim', 'alice');
+  h.setOutput('stuck on login');
+  h.setLive({ ...agent, completion_seq: 3 });
+  await reconcile(db, h.client);
   const reports = db.inbox('lead').filter((m) => m.kind === 'report');
-  expect(reports).toHaveLength(1);
-  expect(reports[0]!.body).toContain(`#${task.id} in_progress: Add login`);
-  expect(reports[0]!.body).toContain('Its message to you is above.');
-  expect(reports[0]!.body).not.toContain('claimed login');
+  expect(reports.map((m) => m.body)).toEqual([
+    expect.stringContaining('spawn turn output'),
+    expect.stringContaining('stuck on login'),
+  ]);
+  expect(reports[1]!.body).toContain(`#${task.id} in_progress: Add login`);
 });
 
 it('does not reuse a direct message in subsequent turn reports', async () => {
   const db = setup();
   const h = harness();
+  db.change(db.add('Add login').id, 'claim', 'alice');
   db.send('alice', 'lead', 'first turn message');
   h.setLive({ ...agent, completion_seq: 1 });
   await reconcile(db, h.client);
@@ -164,12 +170,34 @@ it('reports every new completion after a member respawns', async () => {
     state: 'idle',
     started_at: 2,
   });
+  db.change(db.add('Add login').id, 'claim', 'alice');
   for (const completion_seq of [1, 2, 3]) {
     h.setLive({ ...agent, pane_id: 'w1:p3', completion_seq });
     await reconcile(db, h.client);
   }
   expect(db.inbox('lead').filter((m) => m.kind === 'report')).toHaveLength(4);
   expect(db.deliveryState().idle_hooks!.alice).toBe(3);
+});
+
+it('tells the lead once when a teammate completes a task, with its result', async () => {
+  const db = setup();
+  const h = harness();
+  const task = db.add('Survey caches');
+  db.change(task.id, 'claim', 'alice');
+  await new Tasks(db, {}).complete(task.id, 'alice', 'Redis wins');
+  h.setLive({ ...agent, completion_seq: 1 });
+  await reconcile(db, h.client);
+  const mail = db.inbox('lead');
+  expect(mail).toHaveLength(1);
+  expect(mail[0]).toMatchObject({ from: 'alice' });
+  expect(mail[0]!.body).toBe(
+    `Completed task #${task.id}: Survey caches\nRedis wins`,
+  );
+  expect(h.calls.some((c) => c[1] === 'read')).toBe(false);
+  const own = db.add('Lead work');
+  db.change(own.id, 'claim', 'lead');
+  await new Tasks(db, {}).complete(own.id, 'lead');
+  expect(db.inbox('lead')).toHaveLength(1);
 });
 
 it('splits a surviving pane after killing the latest split member', async () => {
@@ -279,22 +307,34 @@ it('done --force continues past a missing pane and closes the others', async () 
   }
 });
 
-it('starts assigned tasks before unassigned work and announces the assignment', async () => {
+it('starts assigned tasks before unassigned work and sends the description once', async () => {
   const db = setup();
   const h = harness();
   const unassigned = db.add('unassigned');
-  const assigned = db.add('assigned');
+  const assigned = db.add('assigned', 'Read the cache docs');
   db.change(assigned.id, 'assign', 'lead', 'alice');
-  expect(db.inbox('alice').some((m) => m.body.includes('assigned'))).toBe(true);
+  expect(db.inbox('alice')).toEqual([]);
   await reconcile(db, h.client);
   await reconcile(db, h.client);
   expect(db.task(assigned.id).status).toBe('in_progress');
   expect(db.task(unassigned.id).owner).toBeNull();
-  expect(
-    h.calls
-      .filter((c) => c[1] === 'prompt')
-      .some((c) => c[3]!.includes(`claimed task #${assigned.id}`)),
-  ).toBe(true);
+  const prompts = h.calls.filter((c) => c[1] === 'prompt');
+  expect(prompts).toHaveLength(1);
+  expect(prompts[0]![3]).toContain(`claimed task #${assigned.id}`);
+  expect(prompts[0]![3]!.split('Read the cache docs')).toHaveLength(2);
+});
+
+it('mails the assignment to a teammate that does not auto-claim', () => {
+  const db = setup();
+  db.updateTeam((team) => {
+    team.auto_claim = false;
+  });
+  const task = db.add('assigned', 'Read the cache docs');
+  db.change(task.id, 'assign', 'lead', 'alice');
+  expect(db.inbox('alice')).toHaveLength(1);
+  expect(db.inbox('alice')[0]!.body).toContain('Read the cache docs');
+  db.change(db.add('own').id, 'assign', 'lead', 'lead');
+  expect(db.inbox('lead')).toEqual([]);
 });
 
 it('sends only one Esc while urgent mail waits, including after a retry', async () => {

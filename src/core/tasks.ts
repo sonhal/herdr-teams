@@ -1,6 +1,7 @@
 import { Hooks } from './hooks.js';
 import { planApproval } from './plans.js';
 import { Store, checkTaskText, clip, type Task } from './store.js';
+import { worktreeStatus } from './worktrees.js';
 export class Tasks {
   constructor(
     readonly db: Store,
@@ -73,7 +74,43 @@ export class Tasks {
           outcome.stderr || `Completion rejected (exit ${outcome.code})`,
         );
       }
-      return this.db.change(id, 'complete', actor, result, undefined, task);
+      const completed = this.db.change(
+        id,
+        'complete',
+        actor,
+        result,
+        undefined,
+        task,
+      );
+      const lead = this.db.config().lead;
+      if (actor !== lead)
+        this.db.send(
+          actor,
+          lead,
+          clip(
+            [
+              `Completed task #${id}: ${task.subject}`,
+              result,
+              this.checkout(actor),
+            ]
+              .filter(Boolean)
+              .join('\n'),
+          ),
+        );
+      return completed;
     });
+  }
+  /** The completion is saved already, so a broken checkout only goes unreported. */
+  private checkout(member: string): string | undefined {
+    const tree = this.db.config().details?.[member]?.worktree;
+    if (!tree) return;
+    try {
+      const { branch, base, head, ahead, status } = worktreeStatus(tree);
+      const short = (ref: string) =>
+        /^[0-9a-f]{40}$/.test(ref) ? ref.slice(0, 12) : ref;
+      return `Worktree: ${branch} at ${short(head)}, ${ahead} commit(s) on ${short(base)}, ${status}`;
+    } catch {
+      return `Worktree: ${tree.branch}, status unavailable`;
+    }
   }
 }

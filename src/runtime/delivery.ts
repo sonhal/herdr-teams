@@ -1,5 +1,4 @@
 import { Hooks } from '../core/hooks.js';
-import { worktreeStatus } from '../core/worktrees.js';
 import { syncMembers } from './lifecycle.js';
 import { each } from './each.js';
 import {
@@ -90,7 +89,6 @@ export async function reconcile(
       state.incarnations ??= {};
       state.interrupts ??= {};
       state.report_messages ??= {};
-      state.report_boards ??= {};
       for (const [member, agent] of members) {
         const incarnation = JSON.stringify([
           agent.pane_id,
@@ -100,7 +98,6 @@ export async function reconcile(
         if (state.incarnations[member] !== incarnation) {
           state.incarnations[member] = incarnation;
           delete state.reports[member];
-          delete state.report_boards[member];
           if (state.idle_hooks) delete state.idle_hooks[member];
           if (state.blocked) delete state.blocked[member];
           delete state.interrupts[member];
@@ -147,14 +144,13 @@ export async function reconcile(
           db.saveDeliveryState(state);
         }
 
-        const tasks = db
+        const active = db
           .tasks()
-          .filter((t) => t.owner === member)
-          .map((t) => `#${t.id} ${t.status}: ${t.subject}`)
-          .join('\n');
-        const worktree = team.details?.[member]?.worktree;
-        const status = worktree ? JSON.stringify(worktreeStatus(worktree)) : '';
-        const board = `${tasks}\n${status}`;
+          .filter(
+            (t) =>
+              t.owner === member &&
+              (t.status === 'in_progress' || t.status === 'planning'),
+          );
         const last = db
           .inbox(team.lead)
           .filter(
@@ -166,26 +162,30 @@ export async function reconcile(
           )
           .at(-1);
         const messaged = last && last.id !== state.report_messages![member];
-        // A message the teammate sent this turn already reaches the lead; the
-        // report only adds what changed on the board, or the pane when it said
-        // nothing.
-        if (!messaged || board !== (state.report_boards![member] ?? '\n')) {
-          const output = messaged
-            ? 'Its message to you is above.'
-            : await client.paneRead(agent.pane_id, {
-                source: 'recent-unwrapped',
-                lines: 20,
-              });
+        // Completions and plans reach the lead as the teammate's own mail.
+        // A turn that ends silently is reported only when the lead would
+        // otherwise not learn why work stopped: an active task, or the spawn
+        // prompt's turn. The pane is then the only record of what happened.
+        const first = state.reports[member] === undefined;
+        if (!messaged && (active.length || first)) {
+          const output = await client.paneRead(agent.pane_id, {
+            source: 'recent-unwrapped',
+            lines: 20,
+          });
+          const tasks = active
+            .map((t) => `#${t.id} ${t.status}: ${t.subject}`)
+            .join('\n');
           db.send(
             member,
             team.lead,
-            clip(`Turn completed.\n${tasks}\n${output}\n${status}`),
+            clip(
+              `${member} stopped without messaging you${tasks ? ` while holding:\n${tasks}` : '.'}\n${output}`,
+            ),
             false,
             'report',
           );
         }
         state.reports[member] = seq;
-        state.report_boards![member] = board;
         if (last) state.report_messages![member] = last.id;
         db.saveDeliveryState(state);
       }).catch((error: unknown) => failures.push(error));
@@ -212,12 +212,7 @@ export async function reconcile(
           )
             return;
         }
-        if (
-          agent.agent_status !== 'working' &&
-          member !== team.lead &&
-          team.auto_claim !== false &&
-          team.details?.[member]?.auto_claim !== false
-        ) {
+        if (agent.agent_status !== 'working' && db.autoClaims(member)) {
           const task = db.autoClaim(member, pending.length > 0);
           if (task) {
             pending = [
