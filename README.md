@@ -1,4 +1,5 @@
 # herdr-teams
+![header](static/herdr-teams.png)
 
 > ⚠️ **Work in progress.** Not ready for use.
 
