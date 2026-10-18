@@ -1,4 +1,4 @@
 #!/usr/bin/env node
-// Keep this shim executable: spawned teammates get this directory on PATH,
-// and `herdr-teams install-shim` links it for the lead.
+// Keep this shim executable: spawned teammates get this directory on PATH.
+// The lead uses the launcher from `herdr-teams install-shim` instead.
 import('../dist/bin/herdr-teams.js');
