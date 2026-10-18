@@ -6,6 +6,7 @@ import { syncMembers } from './lifecycle.js';
 import { each } from './each.js';
 import {
   Store,
+  agentName,
   clip,
   MAX_MESSAGE_BYTES,
   type Message,
@@ -51,8 +52,9 @@ export function liveMember(
       ? agents.find((a) => a.pane_id === team.lead_pane_id)
       : agents.find((a) => a.name === member);
   const pane = team.details?.[member]?.pane_id;
+  const name = agentName(team, member);
   return agents.find(
-    (a) => a.name === member && (pane === undefined || a.pane_id === pane),
+    (a) => a.name === name && (pane === undefined || a.pane_id === pane),
   );
 }
 

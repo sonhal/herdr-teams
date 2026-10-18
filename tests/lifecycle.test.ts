@@ -42,7 +42,7 @@ it('launches Codex with isolated identity, model, effort and attributed bootstra
     started,
     metadata,
     prompted,
-    jsonReply({ type: 'agent_info', agent }),
+    jsonReply({ type: 'agent_info', agent: { ...agent, name: 'demo-alice' } }),
   ]);
   try {
     const lifecycle = new Lifecycle(
@@ -62,7 +62,7 @@ it('launches Codex with isolated identity, model, effort and attributed bootstra
     expect(calls[1]).toEqual([
       'agent',
       'start',
-      'alice',
+      'demo-alice',
       '--kind',
       'codex',
       '--pane',
@@ -181,7 +181,7 @@ it('uses an overflow tab after four split members without stealing focus', async
     started,
     metadata,
     prompted,
-    jsonReply({ type: 'agent_info', agent }),
+    jsonReply({ type: 'agent_info', agent: { ...agent, name: 'demo-alice' } }),
   ]);
   try {
     await new Lifecycle(db, new HerdrClient({ env: fake.env }), fake.env).spawn(
@@ -202,7 +202,7 @@ describe('split placement', () => {
     started,
     metadata,
     prompted,
-    jsonReply({ type: 'agent_info', agent }),
+    jsonReply({ type: 'agent_info', agent: { ...agent, name: 'demo-alice' } }),
   ];
   function leadTeam(layout?: { count: number; number: number }) {
     const db = setup();
@@ -371,6 +371,85 @@ describe('install-shim action', () => {
     } finally {
       await fake.cleanup();
       rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('herdr agent names', () => {
+  // herdr v0.9.5 src/app/agents.rs: agent names are unique per herdr session
+  // and match ^[a-z][a-z0-9_-]{0,31}$; a duplicate fails with agent_name_taken.
+  const named = { ...agent, name: 'demo-alice' };
+  it('registers a teammate under its team’s name so teams can share member names', async () => {
+    const db = setup();
+    const fake = await fakeHerdr([
+      location,
+      started,
+      metadata,
+      jsonReply({ type: 'agent_prompted', agent: named }),
+      jsonReply({ type: 'agent_info', agent: named }),
+    ]);
+    try {
+      await new Lifecycle(
+        db,
+        new HerdrClient({ env: fake.env }),
+        fake.env,
+      ).spawn('alice', { kind: 'codex', prompt: 'test' });
+      const calls = await fake.calls();
+      expect(calls[1]!.slice(0, 3)).toEqual(['agent', 'start', 'demo-alice']);
+      expect(calls[2]).toContain('alice');
+      expect(calls[3]!.slice(0, 3)).toEqual(['agent', 'prompt', 'demo-alice']);
+      expect(db.config().details!.alice).toMatchObject({
+        agent_name: 'demo-alice',
+        state: 'idle',
+      });
+    } finally {
+      await fake.cleanup();
+    }
+  });
+  it('tracks a teammate by its herdr name and keeps older unprefixed teammates', async () => {
+    const db = setup();
+    db.reserveMember('alice', {
+      kind: 'codex',
+      agent_name: 'demo-alice',
+      pane_id: agent.pane_id,
+      state: 'idle',
+    });
+    db.reserveMember('bob', {
+      kind: 'codex',
+      pane_id: 'w1:p3',
+      state: 'idle',
+    });
+    const fake = await fakeHerdr([]);
+    try {
+      await syncMembers(db, new HerdrClient({ env: fake.env }), [
+        { ...named, agent_status: 'working' },
+        { ...agent, name: 'bob', pane_id: 'w1:p3', agent_status: 'working' },
+        // Another team's alice under the bare name must not count.
+        { ...agent, pane_id: agent.pane_id, name: 'alice' },
+      ]);
+      expect(db.config().details!.alice!.state).toBe('working');
+      expect(db.config().details!.bob!.state).toBe('working');
+    } finally {
+      await fake.cleanup();
+    }
+  });
+  it('rejects a team and member name too long for herdr before opening a pane', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'lifecycle-'));
+    homes.push(home);
+    const db = new Store(home, 'a'.repeat(20));
+    db.create('lead');
+    const fake = await fakeHerdr([]);
+    try {
+      await expect(
+        new Lifecycle(db, new HerdrClient({ env: fake.env }), fake.env).spawn(
+          'b'.repeat(12),
+          { kind: 'codex', prompt: 'test' },
+        ),
+      ).rejects.toThrow(/32 characters/);
+      expect(await fake.calls()).toHaveLength(0);
+      expect(db.config().details?.['b'.repeat(12)]).toBeUndefined();
+    } finally {
+      await fake.cleanup();
     }
   });
 });

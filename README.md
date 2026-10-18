@@ -95,6 +95,8 @@ four teammates beside the lead in its tab, then in team tabs of four;
 `--placement tab|workspace` gives a member its own
 location. All panes open without taking focus. `--model` and `--thinking`
 override team defaults. Use `--worktree dedicated` for an isolated checkout, or `auto` to start shared.
+In herdr, a teammate's agent is named `<team>-<name>`, so teams in one herdr
+session can reuse member names; the two together must fit in 32 characters.
 
 A shutdown request waits for the member to accept or reject it. Accepted requests
 exit the CLI when idle and close the pane only after exit is observed. `done`

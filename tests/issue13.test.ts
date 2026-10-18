@@ -185,7 +185,12 @@ it('splits a surviving pane after killing the latest split member', async () => 
   });
   const lifecycle = new Lifecycle(db, h.client, {});
   await lifecycle.kill('bob');
-  h.setLive({ ...agent, name: 'carol', pane_id: 'w1:p3', completion_seq: 0 });
+  h.setLive({
+    ...agent,
+    name: 'demo-carol',
+    pane_id: 'w1:p3',
+    completion_seq: 0,
+  });
   await lifecycle.spawn('carol', { kind: 'codex', prompt: 'work' });
   expect(h.calls.find((c) => c[1] === 'split')).toContain(pane.pane_id);
   expect(db.config().layout!.count).toBe(2);

@@ -80,7 +80,7 @@ it("spawns the calling pane's agent kind when nothing names one", async () => {
     jsonReply({ type: 'agent_started', agent, argv: ['claude'] }),
     { stdout: '' },
     jsonReply({ type: 'agent_prompted', agent }),
-    jsonReply({ type: 'agent_info', agent }),
+    jsonReply({ type: 'agent_info', agent: { ...agent, name: 'demo-alice' } }),
   ]);
   try {
     const env = { ...fake.env, HERDR_PANE_ID: 'w1:p1' };

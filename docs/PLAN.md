@@ -214,9 +214,11 @@ herdr-teams spawn <name> [--agent <definition>] [--kind claude|codex|pi]
    The pane starts the user's normal interactive shell, so rc files,
    direnv, PATH and API keys are all available. New panes never take focus.
 4. **Launch the agent:**
-   `herdr agent start <name> --kind <kind> --pane <id> -- <adapter args>`.
-   herdr waits for the shell prompt, launches the agent, and returns once it
-   detects the agent ready for input.
+   `herdr agent start <team>-<name> --kind <kind> --pane <id> -- <adapter args>`.
+   herdr agent names are unique across the herdr session every team shares,
+   so the team name keeps two teams' `alice` apart; together they must fit
+   herdr's 32 characters. herdr waits for the shell prompt, launches the
+   agent, and returns once it detects the agent ready for input.
 5. **Label it:** `herdr pane report-metadata` sets the display name
    (`alice · reviewer`), a title and sidebar tokens.
 6. **Bootstrap:** `herdr agent prompt` sends the opening prompt. It covers
