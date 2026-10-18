@@ -106,7 +106,7 @@ it('refuses running agents, dirty worktrees and unmerged branches before removal
   }
 });
 
-it('cleanup --apply removes every eligible worktree past one that fails', async () => {
+it('cleanup --apply removes every eligible worktree and its branch past one that fails', async () => {
   const { db, home } = setup();
   const base = git(home, 'rev-parse', 'HEAD');
   for (const [member, workspace] of [
@@ -135,7 +135,10 @@ it('cleanup --apply removes every eligible worktree past one that fails', async 
   const fake = await fakeHerdr([
     jsonReply({ type: 'agent_list', agents: [] }),
     jsonReply({ type: 'agent_list', agents: [] }),
-    jsonReply({ type: 'worktree_removed' }),
+    {
+      ...jsonReply({ type: 'worktree_removed' }),
+      exec: ['git', '-C', home, 'worktree', 'remove', join(home, 'bob')],
+    },
   ]);
   let stderr = '';
   try {
@@ -149,8 +152,13 @@ it('cleanup --apply removes every eligible worktree past one that fails', async 
     });
     expect(code).toBe(1);
     expect(stderr).toContain('alice');
+    expect(stderr).not.toContain('bob');
     expect(db.config().details!.alice!.worktree).toBeDefined();
     expect(db.config().details!.bob!.worktree).toBeUndefined();
+    // A leftover branch would block the next team named demo.
+    expect(
+      git(home, 'branch', '--list', '--format=%(refname:short)', 'team/demo/*'),
+    ).toBe('team/demo/alice');
     expect((await fake.calls()).at(-1)).toEqual([
       'worktree',
       'remove',
@@ -219,4 +227,52 @@ it('warns the caller, not the lead inbox, about uncommitted lead changes', async
     "warning: the lead checkout has uncommitted changes; alice's worktree contains committed files only\n",
   ]);
   expect(db.inbox('lead')).toEqual([]);
+});
+it('names the leftover branch, its checkout and the fix when a branch exists', async () => {
+  const { db, home } = setup();
+  const path = join(home, 'alice');
+  git(home, 'worktree', 'add', '-b', 'team/demo/alice', path);
+  const client = new HerdrClient({
+    runner: () => Promise.reject(new Error('herdr must not be called')),
+  });
+  db.reserveMember('alice', { kind: 'codex', state: 'starting' });
+  await expect(new Worktrees(db, client).create('alice', home)).rejects.toThrow(
+    `Branch team/demo/alice already exists, probably left by an earlier team named demo. Start this team with another --name, or, if that work is not needed, remove it: git worktree remove ${JSON.stringify(path)} && git branch -D team/demo/alice`,
+  );
+});
+it('done names the worktrees it keeps and how to remove them', async () => {
+  const { db, home } = setup();
+  db.reserveMember('alice', {
+    kind: 'codex',
+    state: 'killed',
+    ended: 'killed',
+    worktree: {
+      path: join(home, 'alice'),
+      branch: 'team/demo/alice',
+      base: git(home, 'rev-parse', 'HEAD'),
+      pane_id: 'w2:p1',
+      tab_id: 'w2:t1',
+      workspace_id: 'w2',
+    },
+  });
+  const fake = await fakeHerdr([
+    jsonReply({ type: 'agent_list', agents: [] }),
+    { stdout: '' },
+  ]);
+  let stdout = '';
+  try {
+    const code = await runCliAsync(['done'], {
+      version: 'test',
+      env: { ...fake.env, HERDR_TEAMS_HOME: db.home, HERDR_TEAMS_TEAM: db.id },
+      stdout: (text) => {
+        stdout += text;
+      },
+      stderr: () => {},
+    });
+    expect(code).toBe(0);
+    expect(stdout).toContain('alice: team/demo/alice');
+    expect(stdout).toContain('cleanup --apply');
+  } finally {
+    await fake.cleanup();
+  }
 });

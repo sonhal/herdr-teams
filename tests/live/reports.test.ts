@@ -79,7 +79,7 @@ describe(`lead mail on herdr ${HERDR_VERSION}`, () => {
     await herdr?.stop();
   });
 
-  it('reports the spawn turn once, without the pane', async () => {
+  it('does not report a silent spawn turn without a task', async () => {
     const spawned = await cli([
       'spawn',
       'alice',
@@ -91,14 +91,12 @@ describe(`lead mail on herdr ${HERDR_VERSION}`, () => {
     ]);
     expect(spawned.stderr).toBe('');
     alicePane = JSON.parse(spawned.stdout).pane_id;
-    await until(() => reports().length > 0, 'the spawn turn report');
+    // Reconcile records every completed turn it saw, reported or not.
     await until(
-      () => db.deliveryState().cursors.lead !== undefined,
-      'delivery to the lead',
+      () => db.deliveryState().reports.alice !== undefined,
+      'the spawn turn to complete',
     );
-    expect(reports().map((m) => m.body)).toEqual([
-      'alice stopped without messaging you.\nPeek: herdr-teams peek alice',
-    ]);
+    expect(reports()).toEqual([]);
   });
 
   it('sends an auto-claimed assignment once and reports a stop mid-task', async () => {
@@ -121,7 +119,7 @@ describe(`lead mail on herdr ${HERDR_VERSION}`, () => {
     expect(reports().at(-1)!.body).toBe(
       `alice stopped without messaging you while holding:\n#${id} in_progress: Survey caches\nPeek: herdr-teams peek alice`,
     );
-    expect(reports()).toHaveLength(2);
+    expect(reports()).toHaveLength(1);
   });
 
   it('delivers a completion to the lead pane with its result', async () => {

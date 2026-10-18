@@ -9,7 +9,8 @@ import { boardAction } from '../src/board/terminal.js';
 import { syncSidebar } from '../src/runtime/sidebar.js';
 import { runCliAsync } from '../src/cli/index.js';
 import { HerdrClient } from '../src/herdr/index.js';
-import { fakeHerdr } from './helpers/fake-herdr.js';
+import { fakeHerdr, jsonReply } from './helpers/fake-herdr.js';
+import { agent } from './helpers/fixtures.js';
 const homes: string[] = [];
 afterEach(() =>
   homes.splice(0).forEach((p) => rmSync(p, { recursive: true, force: true })),
@@ -46,7 +47,7 @@ it('renders task states, owners, dependencies, unread mail without supervision',
   expect(text).toContain('#1 Review');
   expect(text).toContain('owner alice');
 });
-it('board reads do not change cursors, tasks or events or call herdr', async () => {
+it('board reads change no cursors, tasks or events and skip herdr for an unbound team', async () => {
   const db = setup();
   db.add('unassigned');
   db.send('lead', 'alice', 'pending');
@@ -67,6 +68,59 @@ it('board reads do not change cursors, tasks or events or call herdr', async () 
     expect(await fake.calls()).toHaveLength(0);
     expect(readFileSync(join(db.root, 'events.jsonl'), 'utf8')).toBe(before);
     expect(db.deliveryState().cursors).toEqual({});
+  } finally {
+    await fake.cleanup();
+  }
+});
+it("status shows herdr's live member state, not the stored one", async () => {
+  const db = setup();
+  db.bindSession('session.sock');
+  db.reserveMember('bob', {
+    kind: 'codex',
+    state: 'working',
+    pane_id: 'w1:p3',
+  });
+  db.updateTeam((t) => {
+    t.details!.alice!.agent_name = 'demo-alice';
+    t.details!.alice!.state = 'working';
+  });
+  // herdr v0.9.5 `agent list`: alice finished her turn, bob's pane is gone.
+  const fake = await fakeHerdr([
+    jsonReply({
+      type: 'agent_list',
+      agents: [{ ...agent, name: 'demo-alice', agent_status: 'done' }],
+    }),
+    { stderr: 'herdr is not running', exitCode: 1 },
+  ]);
+  const status = async () => {
+    let output = '';
+    const code = await runCliAsync(['--team', db.id, '--json', 'status'], {
+      version: 'test',
+      env: {
+        ...fake.env,
+        HERDR_TEAMS_HOME: db.home,
+        HERDR_SOCKET_PATH: 'session.sock',
+      },
+      stdout: (s) => {
+        output += s;
+      },
+    });
+    expect(code).toBe(0);
+    return (JSON.parse(output) as ReturnType<typeof snapshot>).members;
+  };
+  try {
+    expect(await status()).toMatchObject([
+      { name: 'lead', state: 'unknown' },
+      { name: 'alice', state: 'done' },
+      { name: 'bob', state: 'not-running' },
+    ]);
+    // Unreachable herdr falls back to the stored state.
+    expect(await status()).toMatchObject([
+      { name: 'lead' },
+      { name: 'alice', state: 'working' },
+      { name: 'bob', state: 'working' },
+    ]);
+    expect(db.config().details!.alice!.state).toBe('working');
   } finally {
     await fake.cleanup();
   }

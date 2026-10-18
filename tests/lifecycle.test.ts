@@ -77,6 +77,9 @@ it('launches Codex with isolated identity, model, effort and attributed bootstra
       'model_reasoning_effort=high',
     ]);
     expect(calls[3]![3]).toContain('teammate in team "demo"');
+    expect(calls[3]![3]).toContain(
+      'Message the lead only with news it cannot read from status or the board',
+    );
     expect(db.config().details!.alice).toMatchObject({
       kind: 'codex',
       pane_id: pane.pane_id,

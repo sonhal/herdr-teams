@@ -114,7 +114,9 @@ Merge requires clean checkouts and runs only on an explicit command. Removal
 requires no running agent, a clean checkout and a branch merged into the lead's
 HEAD. `--preserve` commits dirty files first, `--force-unmerged` keeps an unmerged
 branch, and `--delete-branch` explicitly removes the branch. `cleanup` lists
-ended members' worktrees; `cleanup --apply` removes only eligible ones.
+ended members' worktrees; `cleanup --apply` removes only eligible ones and
+deletes their merged branches. Branches are named `team/<team name>/<member>`,
+so a leftover branch blocks a later team with the same name until it is removed.
 
 ## Plans and quality gates
 
@@ -208,6 +210,9 @@ herdr-teams --team demo board --once
 herdr-teams --team demo status --json
 herdr-teams --team demo log --follow
 ```
+
+`status`, `board --once` and `board --json` read each running teammate's state
+from herdr; `not-running` means herdr has no such agent in its pane.
 
 The board shows status columns, members, time in state, unread mail, dependencies,
 branches and recent lead messages. Tab switches between tasks and members;

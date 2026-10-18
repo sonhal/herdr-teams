@@ -181,11 +181,10 @@ export async function reconcile(
           .at(-1);
         const messaged = last && last.id !== state.report_messages![member];
         // Completions and plans reach the lead as the teammate's own mail.
-        // A turn that ends silently is reported only when the lead would
-        // otherwise not learn that work stopped: an active task, or the spawn
-        // prompt's turn. The lead peeks if it needs the pane.
-        const first = state.reports[member] === undefined;
-        if (!messaged && (active.length || first)) {
+        // A turn that ends silently is reported only while the teammate holds
+        // an active task; an idle teammate without one shows on the board.
+        // The lead peeks if it needs the pane.
+        if (!messaged && active.length) {
           const tasks = active
             .map((t) => `#${t.id} ${t.status}: ${t.subject}`)
             .join('\n');
@@ -193,7 +192,7 @@ export async function reconcile(
             member,
             team.lead,
             clip(
-              `${member} stopped without messaging you${tasks ? ` while holding:\n${tasks}` : '.'}\nPeek: herdr-teams peek ${member}`,
+              `${member} stopped without messaging you while holding:\n${tasks}\nPeek: herdr-teams peek ${member}`,
             ),
             false,
             'report',
