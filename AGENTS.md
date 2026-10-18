@@ -42,7 +42,7 @@
   named in `tests/helpers/fixtures.ts`, and name that version beside new
   fixtures. A test against the scripted fake herdr proves our logic, not
   herdr's behaviour.
-- Team isolation: a command, hook or supervisor tick reads and writes only
+- Team isolation: a command or event hook reads and writes only
   the team it was invoked for. The state home is shared by every team and
   every herdr session; pane IDs and agent names are not unique across them.
   Match a teammate on agent name and pane, never pane alone. The lead is

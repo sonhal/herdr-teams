@@ -14,7 +14,7 @@ Codex, pi, …), each in its own herdr pane with its own model and thinking leve
 - **Git worktrees:** isolated checkouts for parallel work, managed by the lead.
 - **Plan mode and quality gates:** plans before code, and hooks that can reject
   a task's completion.
-- **Live supervision:** stall warnings, plus steering, interrupting or stopping
+- **Team control:** inspect, steer, interrupt or stop
   a running agent.
 
 See [docs/PLAN.md](docs/PLAN.md) for the design.
@@ -24,7 +24,7 @@ See [docs/PLAN.md](docs/PLAN.md) for the design.
 Requires Node.js ≥ 20 and npm. M1 implements persistent teams, tasks with
 dependencies and exclusive claiming, inboxes, and an event log. M2 adds spawning, labels, bootstrap, shutdown and kill. M3 adds idle inbox
 delivery, event hooks, turn reports, auto-claim and restart reconciliation.
-M4 adds the supervisor, progress advisories and correction commands. M8 adds the terminal board, status, logs and sidebar labels.
+Lifecycle hooks track members and deliver messages; correction commands let the lead steer work. M8 adds the terminal board, status, logs and sidebar labels.
 
 ```sh
 npm ci
@@ -112,14 +112,13 @@ requests shutdown for all teammates, refusing active tasks; `done --force` and
 `kill <name>` close panes and return active tasks to pending. Launch failures
 retain the pane and send the lead arguments and recent output.
 
-## Supervision
+## Team control
 
-The supervisor opens after team creation and reopens on herdr startup. Set
-`supervisor.mode` to `off` to use event hooks alone, or `pane` for a split
-beside the lead instead of its own tab. Defaults are a 30-second tick, a 10-minute no-progress advisory,
-a 2-minute needs-input advisory and a 5-minute unknown-state advisory. Set a
-threshold to zero to disable it. Advisories inform the lead; they do not kill
-or restart teammates. Interactive or recently focused members stay quiet.
+Event hooks deliver waiting mail and completion reports, track member exits,
+and update sidebar labels. The lead decides when to inspect or correct progress.
+There is no background clock or automatic stall detection. Scheduled wakeups
+are tracked in [issue #32](https://github.com/sonhal/herdr-teams/issues/32).
+Remove the old `supervisor` block from team templates; it is no longer supported.
 
 ```sh
 herdr-teams --team demo peek alice --lines 40
@@ -217,7 +216,6 @@ template with a built-in name replaces the built-in one:
 ```yaml
 review:
   defaults: { kind: codex, thinking: medium }
-  supervisor: { mode: tab }
   members:
     - { name: alice, agent: reviewer }
   tasks:
@@ -253,8 +251,8 @@ j/k selects. Enter peeks; m sends a message; u steers; i interrupts; r releases;
 a assigns; o reopens; p approves a plan; n rejects with feedback; x kills; q exits.
 Actions use the CLI's usual permission and blocked-agent checks.
 
-The supervisor updates member labels and workspace progress tokens. Closing the
-supervisor leaves event hooks active and shows it as offline on the board.
+Event hooks update member labels and workspace progress tokens. The board is
+optional; delivery continues when it is closed.
 
 ## MCP
 

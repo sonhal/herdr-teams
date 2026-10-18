@@ -40,15 +40,13 @@ export async function syncSidebar(db: Store, client: HerdrClient) {
         `task=${task ? token('#' + task.id) : ''}`,
         '--token',
         `branch=${token(member.branch ?? '')}`,
-        '--token',
-        `advice=${token(member.advisory ?? '')}`,
       ];
       const fingerprint = JSON.stringify(argv);
       cache[details.pane_id] = fingerprint;
       if (previous[details.pane_id] !== fingerprint) await client.quiet(argv);
     }
     if (team.workspace_id) {
-      const summary = `${data.tasks.filter((t) => t.status === 'completed').length}/${data.tasks.length} done · ${data.members.filter((m) => m.advisory).length} advisories`;
+      const summary = `${data.tasks.filter((t) => t.status === 'completed').length}/${data.tasks.length} done · ${data.members.filter((m) => m.state === 'blocked').length} blocked`;
       const argv = [
         'workspace',
         'report-metadata',

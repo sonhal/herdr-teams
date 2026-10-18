@@ -1,16 +1,8 @@
 #!/bin/sh
-# Avoid starting Node for events already handled by connected supervisors.
+# Skip Node when there are no registered teams.
 state_home=${HERDR_TEAMS_HOME:-${HERDR_PLUGIN_STATE_DIR:-}}
 [ -n "$state_home" ] || exit 0
 for team_dir in "$state_home"/teams/*; do
   [ -f "$team_dir/config.json" ] || continue
-  [ -z "${HERDR_TEAMS_TEAM:-}" ] || [ "${team_dir##*/}" = "$HERDR_TEAMS_TEAM" ] || continue
-  supervisor_pid=
-  if [ -r "$team_dir/locks/supervisor/ready" ]; then
-    read -r supervisor_pid < "$team_dir/locks/supervisor/ready" || :
-  fi
-  case "$supervisor_pid" in
-    ''|*[!0-9]*|0) exec node dist/bin/herdr-teams.js _hook event ;;
-    *) kill -0 "$supervisor_pid" 2>/dev/null || exec node dist/bin/herdr-teams.js _hook event ;;
-  esac
+  exec node dist/bin/herdr-teams.js _hook event
 done

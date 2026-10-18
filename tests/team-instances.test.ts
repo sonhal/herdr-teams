@@ -22,9 +22,6 @@ function setup() {
   homes.push(home);
   const db = new Store(home, randomUUID());
   db.create('lead', 'dev');
-  db.updateTeam((team) => {
-    team.supervisor = { mode: 'off' };
-  });
   return db;
 }
 
@@ -90,7 +87,7 @@ it('keeps the runtime name separate from the template name', async () => {
   mkdirSync(join(db.home, '.herdr'));
   writeFileSync(
     join(db.home, '.herdr', 'teams.yaml'),
-    'sample:\n  supervisor: {mode: off}\n  members: []\n',
+    'sample:\n  members: []\n',
   );
   vi.spyOn(process, 'cwd').mockReturnValue(db.home);
   const fake = await fakeHerdr([jsonReply({ type: 'agent_list', agents: [] })]);

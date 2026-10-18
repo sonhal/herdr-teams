@@ -68,12 +68,10 @@ it('saves and restarts a team with equivalent roles, defaults and seed tasks', a
     instructions: 'Review carefully',
     prompt: 'Find defects',
     auto_claim: false,
-    interactive: true,
     plan_mode: true,
   });
   original.updateTeam((t) => {
     t.defaults = { kind: 'codex', thinking: 'medium' };
-    t.supervisor = { mode: 'off' };
     t.plan_approval = 'none';
   });
   const task = original.add('Seed work', 'Description');
@@ -104,7 +102,6 @@ it('saves and restarts a team with equivalent roles, defaults and seed tasks', a
       instructions: 'Review carefully',
       prompt: 'Find defects',
       auto_claim: false,
-      interactive: true,
       plan_mode: true,
     });
     expect(restored.tasks()[0]).toMatchObject({
@@ -137,7 +134,7 @@ it('rejects invalid settings before creating a team or invoking herdr', async ()
         'bad',
         'lead',
       ),
-    ).rejects.toThrow('tick_seconds');
+    ).rejects.toThrow('supervisor setting was removed');
     expect(Store.teams(db.home)).toHaveLength(0);
     expect(await fake.calls()).toHaveLength(0);
   } finally {

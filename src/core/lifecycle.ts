@@ -10,7 +10,6 @@ export interface SpawnOptions {
   instructions?: string;
   plan_approval?: 'lead' | 'none';
   auto_claim?: boolean;
-  interactive?: boolean;
   kind?: string;
   model?: string;
   thinking?: string;
@@ -67,7 +66,6 @@ export class Lifecycle {
         team.defaults?.plan_approval ??
         team.plan_approval ??
         'lead',
-      interactive: options.interactive ?? team.defaults?.interactive ?? false,
     };
     const agentName = newAgentName(team.name, member, team.id);
     const kind =
@@ -98,7 +96,6 @@ export class Lifecycle {
         team.defaults?.auto_claim ??
         team.auto_claim ??
         true,
-      interactive: options.interactive ?? false,
       ...(model ? { model } : {}),
       ...(thinking ? { thinking } : {}),
       state: 'starting',

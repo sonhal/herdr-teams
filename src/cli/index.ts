@@ -1,21 +1,17 @@
 import { serveMcp } from '../mcp/server.js';
 import { Command, CommanderError } from 'commander';
 import { installBoardCommands } from './board.js';
-import { syncSidebar } from '../supervisor/sidebar.js';
+import { syncSidebar } from '../runtime/sidebar.js';
 import { installTemplateCommands } from './templates.js';
 import { installPlanCommands } from './plans.js';
 import { installWorktreeCommands } from './worktrees.js';
-import { installSupervisionCommands } from './supervision.js';
-import {
-  ensureSupervisor,
-  supervisorConnected,
-} from '../supervisor/runtime.js';
-import { applyEvent } from '../supervisor/events.js';
+import { installControlCommands } from './control.js';
+import { applyEvent } from '../runtime/events.js';
 import { installLifecycleCommands } from './lifecycle.js';
 import { installCoreCommands } from './core.js';
 import { Store } from '../core/store.js';
 import { HerdrClient } from '../herdr/index.js';
-import { reconcile } from '../supervisor/delivery.js';
+import { reconcile } from '../runtime/delivery.js';
 import { readIdentity, readSelectedIdentity } from './identity.js';
 
 export interface CliOptions {
@@ -56,7 +52,7 @@ export function createCli(options: CliOptions): Command {
     });
   installCoreCommands(program, env, stdout, stderr);
   installLifecycleCommands(program, env, stdout);
-  installSupervisionCommands(program, env, stdout);
+  installControlCommands(program, env, stdout);
   installWorktreeCommands(program, env, stdout);
   installPlanCommands(program, env, stdout);
   installTemplateCommands(program, env, stdout);
@@ -121,16 +117,11 @@ export async function runCliAsync(
   )
     return code;
   const command = program.args[0];
-  if (['status', 'board', 'log', 'supervise', 'mcp'].includes(command ?? ''))
-    return 0;
+  if (['status', 'board', 'log', 'mcp'].includes(command ?? '')) return 0;
   const env = options.env ?? process.env;
   const identity = readIdentity(env);
   if (!identity.home) return code;
   const hook = command === '_hook' ? program.args[1] : undefined;
-  const opening =
-    hook === 'startup' ||
-    command === 'spawn' ||
-    (command === 'team' && ['create', 'start'].includes(program.args[1] ?? ''));
   // Hooks carry no team identity; they act for every team of this session.
   // A command acts only for the team it ran against.
   const teams = hook
@@ -154,7 +145,6 @@ export async function runCliAsync(
       )
         continue;
       if (hook === 'event') {
-        if (supervisorConnected(db)) continue;
         const event = env.HERDR_PLUGIN_EVENT_JSON
           ? (JSON.parse(env.HERDR_PLUGIN_EVENT_JSON) as {
               data?: {
@@ -181,12 +171,8 @@ export async function runCliAsync(
           continue;
         applyEvent(db, event);
       }
-      const caller = identity.agent && team.details?.[identity.agent];
-      if (caller && caller.pane_id === identity.paneId)
-        db.patchMember(identity.agent!, { last_activity: Date.now() });
       await reconcile(db, client, env);
-      if (hook === 'event') await syncSidebar(db, client);
-      if (opening) await ensureSupervisor(db, client);
+      await syncSidebar(db, client);
     } catch (error) {
       failed = true;
       (options.stderr ?? ((text: string) => process.stderr.write(text)))(

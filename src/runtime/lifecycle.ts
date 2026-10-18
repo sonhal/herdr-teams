@@ -79,7 +79,6 @@ export async function syncMembers(
       db.patchMember(name, {
         state: live.agent_status,
         state_since: Date.now(),
-        progress_at: Date.now(),
         ...(live.agent_status === 'working' ? { interrupted: false } : {}),
       });
       db.event('member.state', { member: name, state: live.agent_status });

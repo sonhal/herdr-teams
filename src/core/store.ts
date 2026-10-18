@@ -45,18 +45,8 @@ export interface Team {
     auto_claim?: boolean;
     plan_mode?: boolean;
     plan_approval?: 'lead' | 'none';
-    interactive?: boolean;
   };
   layout?: { tab_id: string; pane_id: string; count: number; number: number };
-  supervisor?: {
-    mode: 'pane' | 'tab' | 'off';
-    pane_id?: string;
-    tick_seconds?: number;
-    no_progress_minutes?: number;
-    needs_input_minutes?: number;
-    unknown_minutes?: number;
-    on_no_progress?: 'notify' | 'nudge';
-  };
   createdAt: string;
 }
 export interface Worktree {
@@ -113,15 +103,8 @@ export interface Member {
   plan_approval?: 'lead' | 'none';
   state: string;
   state_since?: number;
-  progress_at?: number;
-  last_activity?: number;
   focused_at?: number;
-  interactive?: boolean;
   interrupted?: boolean;
-  screen_hash?: string;
-  advisory?: 'no-progress' | 'needs-input' | 'unclassified' | null;
-  advisory_notified?: boolean;
-  nudged?: boolean;
   ended?: EndState;
   shutdown_requested?: boolean;
   shutdown_accepted?: boolean;

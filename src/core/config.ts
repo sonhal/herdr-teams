@@ -26,7 +26,6 @@ export interface Definition {
   plan_approval?: 'lead' | 'none';
   worktree?: 'shared' | 'dedicated' | 'auto';
   auto_claim?: boolean;
-  interactive?: boolean;
   instructions?: string;
 }
 export interface Template {
@@ -36,7 +35,6 @@ export interface Template {
   plan_approval?: 'lead' | 'none';
   worktree_requests?: 'lead' | 'auto';
   hooks?: Team['hooks'];
-  supervisor?: Team['supervisor'];
   members: (Definition & { name: string; agent?: string; prompt?: string })[];
   tasks?: {
     subject: string;
@@ -127,7 +125,6 @@ export class Config {
       'plan_approval',
       'worktree',
       'auto_claim',
-      'interactive',
     ];
     const result = Object.fromEntries(
       Object.entries(data).filter(([name]) => known.includes(name)),
@@ -147,7 +144,7 @@ export class Config {
     ] as const)
       if (value[field] !== undefined && typeof value[field] !== 'string')
         throw new Error(`Invalid ${field}`);
-    for (const field of ['plan_mode', 'auto_claim', 'interactive'] as const)
+    for (const field of ['plan_mode', 'auto_claim'] as const)
       if (value[field] !== undefined && typeof value[field] !== 'boolean')
         throw new Error(`Invalid ${field}`);
     if (
@@ -233,24 +230,10 @@ export class Config {
       !['lead', 'auto'].includes(template.worktree_requests)
     )
       throw new Error('Invalid worktree request policy');
-    if (template.supervisor !== undefined) {
-      object(template.supervisor, 'supervisor');
-      if (!['off', 'pane', 'tab'].includes(template.supervisor.mode))
-        throw new Error('Invalid supervisor mode');
-      for (const name of [
-        'tick_seconds',
-        'no_progress_minutes',
-        'needs_input_minutes',
-        'unknown_minutes',
-      ] as const) {
-        const n = template.supervisor[name];
-        if (
-          n !== undefined &&
-          (!Number.isFinite(n) || n < 0 || (name === 'tick_seconds' && n === 0))
-        )
-          throw new Error(`Invalid ${name}`);
-      }
-    }
+    if ('supervisor' in template)
+      throw new Error(
+        'The supervisor setting was removed; delete it to use event-hook delivery',
+      );
     if (template.hooks !== undefined) {
       object(template.hooks, 'hooks');
       const { failure_action, max_reopens, followup_owner, timeout_seconds } =
@@ -332,7 +315,6 @@ export class Config {
       if (template.worktree_requests)
         team.worktree_requests = template.worktree_requests;
       if (template.hooks) team.hooks = template.hooks;
-      team.supervisor = template.supervisor ?? { mode: 'tab' };
       if (this.env.HERDR_PANE_ID) team.lead_pane_id = this.env.HERDR_PANE_ID;
       if (this.env.HERDR_WORKSPACE_ID)
         team.workspace_id = this.env.HERDR_WORKSPACE_ID;
@@ -390,7 +372,6 @@ export class Config {
         plan_mode: details.plan_mode ?? false,
         worktree: details.worktree_mode ?? 'shared',
         auto_claim: details.auto_claim ?? team.auto_claim ?? true,
-        interactive: details.interactive ?? false,
         plan_approval: details.plan_approval ?? team.plan_approval ?? 'lead',
       };
       const body = details.instructions ?? '';
@@ -404,11 +385,6 @@ export class Config {
         ...(details.prompt ? { prompt: details.prompt } : {}),
       });
     }
-    const supervisor = {
-      ...team.supervisor,
-      mode: team.supervisor?.mode ?? 'tab',
-    };
-    delete supervisor.pane_id;
     values[name] = {
       defaults: {
         ...team.defaults,
@@ -417,7 +393,6 @@ export class Config {
       plan_approval: team.plan_approval ?? 'lead',
       worktree_requests: team.worktree_requests ?? 'lead',
       hooks: team.hooks,
-      supervisor,
       members,
       tasks: db
         .tasks()
