@@ -22,10 +22,9 @@ See [docs/PLAN.md](docs/PLAN.md) for the design.
 ## Development
 
 Requires Node.js ≥ 20 and npm. M1 implements persistent teams, tasks with
-dependencies and exclusive claiming, inboxes, and an event log. M3 adds idle inbox delivery, event hooks, turn reports, auto-claim and restart
-reconciliation. Agent lifecycle, board and the long-running supervisor remain
-placeholders. Delivery requires registered members running under their member
-names in herdr; lifecycle setup awaits M2.
+dependencies and exclusive claiming, inboxes, and an event log. M2 adds spawning, labels, bootstrap, shutdown and kill. M3 adds idle inbox
+delivery, event hooks, turn reports, auto-claim and restart reconciliation.
+The board and long-running supervisor remain placeholders.
 
 ```sh
 npm ci
@@ -72,3 +71,24 @@ Blocked recipients retain their mail. `--urgent` mail stays queued until idle
 while working-agent steering awaits M4. Set `auto_claim: false` in team config
 to disable automatic claiming. Generated state belongs outside the repository
 or in an ignored directory.
+
+## Teammates
+
+Inside a herdr session, create a team from the lead pane, then spawn members:
+
+```sh
+herdr-teams team create demo
+herdr-teams --team demo spawn alice --kind codex --thinking high --prompt "Review the implementation"
+herdr-teams --team demo shutdown alice
+```
+
+Members receive team identity and the CLI on PATH. Splits use team tabs with
+four teammates per tab; `--placement tab|workspace` gives a member its own
+location. All panes open without taking focus. `--model` and `--thinking`
+override team defaults. Dedicated worktrees await M5.
+
+A shutdown request waits for the member to accept or reject it. Accepted requests
+exit the CLI when idle and close the pane only after exit is observed. `done`
+requests shutdown for all teammates, refusing active tasks; `done --force` and
+`kill <name>` close panes and return active tasks to pending. Launch failures
+retain the pane and send the lead arguments and recent output.

@@ -1,5 +1,6 @@
 import { mkdir, rm, readFile, writeFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { syncMembers } from './lifecycle.js';
 import { Store, type Message } from '../core/store.js';
 import { HerdrClient, type AgentInfo } from '../herdr/index.js';
 
@@ -42,12 +43,24 @@ export async function reconcile(db: Store, client: HerdrClient): Promise<void> {
   }
   try {
     await writeFile(join(lease, 'pid'), String(process.pid));
-    const team = db.config();
+    let team = db.config();
     const state = db.deliveryState();
     const agents = (await client.agentList()).agents;
+    await syncMembers(db, client, agents);
+    team = db.config();
     const members = new Map<string, AgentInfo>();
     for (const member of team.members) {
-      const agent = agents.find((a) => a.name === member);
+      const details = team.details?.[member];
+      if (
+        details?.ended ||
+        details?.shutdown_accepted ||
+        details?.state === 'starting'
+      )
+        continue;
+      const pane = member === team.lead ? team.lead_pane_id : details?.pane_id;
+      const agent = agents.find((a) =>
+        pane ? a.pane_id === pane : a.name === member,
+      );
       if (agent) members.set(member, agent);
     }
     state.blocked ??= {};
@@ -125,10 +138,10 @@ export async function reconcile(db: Store, client: HerdrClient): Promise<void> {
       }
       if (!pending.length) continue;
       // Recheck after reports and disk operations; herdr also rejects blocked agents.
-      const current = (await client.agentGet(member)).agent;
+      const current = (await client.agentGet(agent.pane_id)).agent;
       if (!['idle', 'done'].includes(current.agent_status)) continue;
       await client.agentPrompt(
-        member,
+        agent.pane_id,
         pending.map((m) => wrap(team.name, m)).join('\n\n'),
       );
       state.cursors[member] = pending.at(-1)!.id;

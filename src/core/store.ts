@@ -17,7 +17,32 @@ export interface Team {
   lead: string;
   members: string[];
   auto_claim?: boolean;
+  workspace_id?: string;
+  lead_pane_id?: string;
+  details?: Record<string, Member>;
+  defaults?: { kind?: string; model?: string; thinking?: string };
+  layout?: { tab_id: string; pane_id: string; count: number; number: number };
+  supervisor?: { mode: 'pane' | 'tab' | 'off'; pane_id?: string };
   createdAt: string;
+}
+export type EndState =
+  'shut-down' | 'closed-by-user' | 'failed-to-launch' | 'crashed' | 'killed';
+export interface Member {
+  kind: string;
+  model?: string;
+  thinking?: string;
+  pane_id?: string;
+  workspace_id?: string;
+  tab_id?: string;
+  plan_mode?: boolean;
+  state: string;
+  ended?: EndState;
+  shutdown_requested?: boolean;
+  shutdown_accepted?: boolean;
+  shutdown_exit_sent?: boolean;
+  launch_args?: string[];
+  last_output?: string;
+  session?: unknown;
 }
 export interface Task {
   id: string;
@@ -118,6 +143,84 @@ export class Store {
     } finally {
       rmSync(recovery, { recursive: true, force: true });
     }
+  }
+  async exclusive<T>(key: string, operation: () => Promise<T>): Promise<T> {
+    name(key);
+    const path = join(this.root, 'locks', key);
+    const deadline = Date.now() + 10000;
+    for (;;) {
+      try {
+        mkdirSync(path);
+        break;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+        this.recoverLock(path);
+        if (Date.now() >= deadline)
+          throw new Error(`Operation ${key} is busy; retry`);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    }
+    try {
+      atomic(join(path, 'owner.json'), { pid: process.pid });
+      return await operation();
+    } finally {
+      rmSync(path, { recursive: true, force: true });
+    }
+  }
+  updateTeam(update: (team: Team) => void): Team {
+    return this.lock(() => {
+      const config = this.config();
+      update(config);
+      atomic(join(this.root, 'config.json'), config);
+      return config;
+    });
+  }
+  reserveMember(member: string, details: Member): void {
+    name(member);
+    this.updateTeam((team) => {
+      if (team.members.includes(member) && !team.details?.[member]?.ended)
+        throw new Error('Member already exists');
+      if (!team.members.includes(member)) team.members.push(member);
+      team.details ??= {};
+      team.details[member] = details;
+    });
+    this.event('member.starting', { member, details });
+  }
+  patchMember(member: string, patch: Partial<Member>): Member {
+    let result!: Member;
+    this.updateTeam((team) => {
+      const details = team.details?.[member];
+      if (!details) throw new Error('No lifecycle record for member');
+      Object.assign(details, patch);
+      result = details;
+    });
+    return result;
+  }
+  endMember(member: string, ended: EndState, output = ''): void {
+    let changed = false;
+    this.updateTeam((team) => {
+      const details = team.details?.[member];
+      if (!details || details.ended) return;
+      details.ended = ended;
+      details.state = ended;
+      details.last_output = output;
+      changed = true;
+    });
+    if (!changed) return;
+    for (const task of this.tasks().filter(
+      (t) =>
+        t.owner === member &&
+        (t.status === 'in_progress' || t.status === 'planning'),
+    ))
+      this.change(task.id, 'release', this.config().lead);
+    this.send(
+      member,
+      this.config().lead,
+      `${member}: ${ended}\n${output}`,
+      false,
+      'advisory',
+    );
+    this.event('member.ended', { member, ended, output });
   }
   addMember(member: string): Team {
     name(member);
