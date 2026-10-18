@@ -22,7 +22,12 @@ function setup() {
   const home = mkdtempSync(join(tmpdir(), 'templates-'));
   homes.push(home);
   mkdirSync(join(home, '.herdr', 'agents'), { recursive: true });
-  const env = { ...process.env, XDG_CONFIG_HOME: join(home, 'global') };
+  const env = {
+    ...process.env,
+    HERDR_PANE_ID: undefined,
+    HERDR_WORKSPACE_ID: undefined,
+    XDG_CONFIG_HOME: join(home, 'global'),
+  };
   return { home, env, config: new Config(home, env) };
 }
 it('resolves project definitions before compatibility and global definitions', () => {
