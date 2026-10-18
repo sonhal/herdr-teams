@@ -22,7 +22,7 @@
 16. [Plugin manifest](#16-plugin-manifest)
 17. [Milestones and testing](#17-milestones-and-testing)
 18. [Open questions and risks](#18-open-questions-and-risks)
-- [Appendix A: herdr capabilities used](#appendix-a-herdr-capabilities-used)
+- [Appendix A: herdr primer for implementers](#appendix-a-herdr-primer-for-implementers)
 - [Appendix B: Influences](#appendix-b-influences)
 
 ---
@@ -806,20 +806,122 @@ lead's `PATH`.
 
 ---
 
-## Appendix A: herdr capabilities used
+## Appendix A: herdr primer for implementers
 
-| Capability | herdr surface |
-|---|---|
-| Plugin packaging | `herdr-plugin.toml` with `[[build]]`, `[[startup]]`, `[[events]]`, `[[actions]]`, `[[panes]]`; injected `HERDR_BIN_PATH`, `HERDR_PLUGIN_ROOT`, `HERDR_PLUGIN_STATE_DIR`, `HERDR_PLUGIN_EVENT_JSON` |
-| Layout | `workspace create`, `tab create`, `pane split --env … --no-focus`, `pane move`, `pane close` |
-| Worktrees | `worktree create --branch --base --label`, `worktree remove` |
-| Agents | `agent start --kind`, `agent prompt`, `agent read`, `agent send-keys`, `agent wait`, `agent get`, `agent rename` |
-| State | agent states `idle`/`working`/`blocked`/`done`/`unknown`; `completion_seq`; `agent_session` |
-| Events | `events.subscribe` (with `events_lost` recovery via `session.snapshot`); hookable events `pane.agent_status_changed`, `pane.exited`, `pane.closed`, `pane.moved`, `pane.focused` |
-| Display | `pane report-metadata` (display name, state labels, tokens), `workspace report-metadata` |
-| Notifications | herdr notifications for `needs-input` |
+Summary of the herdr features this plan relies on, based on herdr **v0.9.5**.
+The authoritative sources are the upstream repository
+[`ogulcancelik/herdr`](https://github.com/ogulcancelik/herdr): docs under
+`docs/preview/website/src/content/docs/` (`plugins.mdx`, `cli-reference.mdx`,
+`socket-api.mdx`, `agent-automation.mdx`, `agents.mdx`) and the API schema
+under `src/api/schema/`. `herdr --skill` prints the agent skill bundled with
+the installed binary. Check these before relying on a detail below.
 
-Reference: herdr v0.9.5 documentation and source.
+### Concepts
+
+- **Session → workspace → tab → pane.** A workspace is a project container,
+  a tab is a layout inside it, and a pane is a real terminal. A background
+  server owns the panes, so they survive a client detaching.
+- **Agent:** a recognized coding-agent process inside a pane. herdr detects
+  it from the foreground process and screen manifests, or from the agent's
+  own state reports.
+- **Pane IDs** look like `w1:p2`. A pane moved to another workspace gets a
+  new ID: use `.result.move_result.pane.pane_id` afterwards. The old ID stays
+  valid as an alias for the running process.
+- Inside a herdr pane, `HERDR_ENV=1`, `HERDR_PANE_ID`, `HERDR_TAB_ID` and
+  `HERDR_WORKSPACE_ID` are set.
+
+### Plugins
+
+- **Plugin = manifest + commands.** A plugin is a directory with
+  `herdr-plugin.toml`. It declares `[[build]]`, `[[startup]]`, `[[actions]]`,
+  `[[events]]`, `[[panes]]` and `[[link_handlers]]`. Each entry is an argv
+  command (not run through a shell) in any language. *"The entire herdr CLI
+  is the plugin API"*: commands call back through `$HERDR_BIN_PATH`.
+- Required manifest fields: `id`, `name`, `version`, `min_herdr_version`.
+  Declare `platforms`.
+- **Injected env:** `HERDR_SOCKET_PATH`, `HERDR_BIN_PATH`, `HERDR_ENV=1`,
+  `HERDR_PLUGIN_ID`, `HERDR_PLUGIN_ROOT`, `HERDR_PLUGIN_CONFIG_DIR`,
+  `HERDR_PLUGIN_STATE_DIR`, `HERDR_PLUGIN_CONTEXT_JSON`, and the
+  `HERDR_WORKSPACE_ID` / `HERDR_TAB_ID` / `HERDR_PANE_ID` of the current
+  context. Event hooks also get `HERDR_PLUGIN_EVENT` and
+  `HERDR_PLUGIN_EVENT_JSON`; actions get `HERDR_PLUGIN_ACTION_ID`; panes get
+  `HERDR_PLUGIN_ENTRYPOINT_ID`.
+- Runtime commands run with the plugin directory as their working directory.
+  Don't keep state in `HERDR_PLUGIN_ROOT`; use `HERDR_PLUGIN_STATE_DIR` and
+  `HERDR_PLUGIN_CONFIG_DIR`.
+- **Hookable events** (`PLUGIN_HOOK_EVENT_KINDS` in
+  `src/api/schema/events.rs`) include **`pane.agent_status_changed`**,
+  `pane.agent_detected`, `pane.exited`, `pane.closed`, `pane.moved`,
+  `pane.focused`, `pane.created` and `worktree.created` /
+  `worktree.removed`. High-volume events such as `pane.output_changed` and
+  `layout.updated` are not hookable.
+- **No storage API, no supervised daemons.** Startup hooks are one-shot. The
+  plugin owns its files. Detached background processes must be stopped before
+  their parent command or pane exits.
+- **Plugin panes:** `[[panes]]` with
+  `placement = split|tab|popup|overlay|zoomed`. Opened with
+  `herdr plugin pane open --plugin <id> --entrypoint <pane> [--placement …]
+  [--env K=V]`. Split, tab and zoomed plugin panes are normal herdr panes.
+- **Developing:** `herdr plugin link <dir>` registers a local checkout (no
+  build step runs). `herdr plugin action invoke <id.action>`,
+  `herdr plugin log list --plugin <id>` and `herdr plugin list` help with
+  debugging. `herdr plugin install owner/repo[/subdir]` installs from GitHub
+  and runs `[[build]]`.
+
+### Layout and worktrees
+
+- `herdr workspace create`, `herdr tab create` and
+  `herdr pane split --direction right|down --cwd --env K=V --no-focus`. Each
+  returns JSON with the new IDs (`.result.root_pane.pane_id`,
+  `.result.pane.pane_id`). Creation never steals focus unless `--focus` is
+  given.
+- `herdr pane move <id> --tab|--new-tab|--new-workspace`,
+  `herdr pane close <id>`.
+- **Worktrees:** `herdr worktree create --cwd <repo> --branch <b> --base <ref>
+  --label <l> --no-focus` creates the git worktree **and** opens it as a
+  herdr workspace grouped with the repo. `herdr worktree remove --workspace
+  <id> [--force]` runs `git worktree remove` and never deletes branches.
+
+### Agents
+
+- **Start:** `herdr agent start <name> --kind <kind> --pane <id>
+  [--timeout ms] -- <args>`. The pane must be at an idle shell prompt. It
+  supports `claude`, `codex`, `pi`, `opencode`, `gemini`, `copilot`,
+  `cursor`, `amp`, `droid` and others (about 24 kinds). It returns only once
+  the agent is ready (default timeout 30 s); it returns `agent_not_ready` if
+  the agent is `blocked` during start-up. Names follow
+  `[a-z][a-z0-9_-]{0,31}`, are unique among live agents, and are cleared when
+  the agent exits.
+- **Driving agents:** `agent prompt <name> "<text>" [--wait --until idle]`,
+  `agent wait`, `agent read --source recent-unwrapped --lines N` and
+  `agent send-keys <name> esc`. `agent prompt` refuses to type into an agent
+  that is `blocked` (returns `agent_blocked`), which is a useful safety
+  property. `--wait` returns `agent_prompt_stalled` if no activity is seen
+  within 5 s, and it tracks state, not individual turns. A timeout doesn't
+  prove nothing was sent, so read the agent before retrying.
+- **State model:** `idle`, `working`, `blocked`, `done` and `unknown`. herdr
+  detects it from the screen or from integrations, and it rolls up to the
+  sidebar. `idle` and `done` both mean ready for input. `completion_seq`
+  marks an idle transition that completed real work. `agent get` and
+  `agent list` also expose `agent_session` (for resume) and
+  `foreground_cwd`.
+- **Display:** `pane report-metadata --source herdr-teams --title ...
+  --display-agent "alice · reviewer" --token task=#12` sets the sidebar label
+  without taking over semantic state. Tokens are limited to 16 per report and
+  32 per pane, with values up to 80 characters. `workspace report-metadata`
+  does the same for workspaces.
+
+### Socket API and events
+
+- Newline-delimited JSON over a Unix socket (`HERDR_SOCKET_PATH`); the CLI is
+  a thin wrapper over it. CLI errors print JSON to stderr and exit 1; bad
+  CLI syntax exits 2.
+- `events.subscribe` keeps a connection open and pushes events. Event
+  history isn't durable. A slow subscriber gets `events_lost` and is
+  disconnected; recover by resubscribing and reconciling from
+  `session.snapshot`.
+- Subscription-only event kinds include `pane.output_matched` and
+  `pane.scroll_changed`.
 
 ## Appendix B: Influences
 
