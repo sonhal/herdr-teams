@@ -22,8 +22,8 @@ const replies = JSON.parse(fs.readFileSync(${JSON.stringify(state)}, 'utf8'));
 const reply = replies.shift();
 if (!reply) { process.stderr.write('No scripted reply'); process.exit(99); }
 fs.writeFileSync(${JSON.stringify(state)}, JSON.stringify(replies));
-process.stdout.write(reply.stdout ?? '');
-process.stderr.write(reply.stderr ?? '');
+fs.writeFileSync(1, reply.stdout ?? '');
+fs.writeFileSync(2, reply.stderr ?? '');
 if (reply.signal) process.kill(process.pid, reply.signal);
 else process.exitCode = reply.exitCode ?? 0;
 `,

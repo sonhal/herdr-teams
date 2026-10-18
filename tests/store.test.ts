@@ -1,0 +1,138 @@
+import {
+  mkdtempSync,
+  rmSync,
+  readFileSync,
+  mkdirSync,
+  utimesSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawn } from 'node:child_process';
+import { afterEach, describe, expect, it } from 'vitest';
+import { Store } from '../src/core/store.js';
+import { runCli } from '../src/cli/index.js';
+const homes: string[] = [];
+function fixture() {
+  const home = mkdtempSync(join(tmpdir(), 'teams-'));
+  homes.push(home);
+  const db = new Store(home, 'demo');
+  db.create('lead');
+  return { home, db };
+}
+afterEach(() => {
+  for (const home of homes.splice(0))
+    rmSync(home, { recursive: true, force: true });
+});
+describe('M1 store', () => {
+  it('persists tasks, rejects blocked claims and cycles, and unblocks dependents', () => {
+    const { home, db } = fixture();
+    const a = db.add('first');
+    const b = db.add('second');
+    db.dependency(b.id, a.id);
+    expect(() => db.dependency(a.id, b.id)).toThrow('cycle');
+    expect(() => db.change(b.id, 'claim', 'lead')).toThrow('dependencies');
+    db.change(a.id, 'claim', 'lead');
+    db.change(a.id, 'complete', 'lead', 'finished');
+    expect(new Store(home, 'demo').task(a.id).result).toBe('finished');
+    expect(db.change(b.id, 'claim', 'lead').status).toBe('in_progress');
+    expect(() => db.change(b.id, 'claim', 'lead')).toThrow('claimed');
+  });
+  it('validates names, membership, and ownership', () => {
+    const { home, db } = fixture();
+    expect(() => new Store(home, '../escape')).toThrow('Invalid name');
+    expect(() => db.authorize('stranger')).toThrow('Unknown');
+    const task = db.add('test');
+    expect(() => db.change(task.id, 'complete', 'lead')).toThrow('owner');
+    expect(() => db.send('lead', 'stranger', 'hello')).toThrow('recipient');
+    expect(() => db.create('lead')).toThrow();
+  });
+  it('stores messages and records events without advancing delivery', () => {
+    const { db } = fixture();
+    const message = db.send('lead', 'lead', 'hello', true);
+    expect(db.inbox('lead')).toEqual([message]);
+    expect(readFileSync(join(db.root, 'events.jsonl'), 'utf8')).toContain(
+      'message.sent',
+    );
+  });
+  it('wires real CLI commands and reports actionable errors', () => {
+    const { home } = fixture();
+    let stdout = '';
+    let stderr = '';
+    const options = {
+      version: 'test',
+      env: { HERDR_TEAMS_HOME: home, HERDR_TEAMS_TEAM: 'demo' },
+      stdout: (text: string) => {
+        stdout += text;
+      },
+      stderr: (text: string) => {
+        stderr += text;
+      },
+    };
+    expect(runCli(['task', 'add', 'hello', '--json'], options)).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({
+      subject: 'hello',
+      status: 'pending',
+    });
+    expect(runCli(['task', 'claim', '999'], options)).toBe(1);
+    expect(stderr).toContain('error:');
+  });
+  it('recovers an abandoned lock after the stale timeout', () => {
+    const { db } = fixture();
+    const lock = join(db.root, 'locks', 'store');
+    mkdirSync(lock);
+    const old = new Date(Date.now() - 120000);
+    utimesSync(lock, old, old);
+    expect(db.add('after interruption').id).toBe('1');
+  });
+  it('checks lead authority and notifies assigned tasks when dependencies complete', () => {
+    const { db } = fixture();
+    db.addMember('alice');
+    expect(() => db.authorize('alice', true)).toThrow('Only the lead');
+    const a = db.add('prerequisite');
+    const b = db.add('dependent');
+    db.change(b.id, 'assign', 'lead', 'alice');
+    db.dependency(b.id, a.id);
+    db.change(a.id, 'claim', 'lead');
+    db.change(a.id, 'complete', 'lead');
+    expect(db.inbox('alice')[0]?.body).toContain('unblocked');
+    expect(db.change(b.id, 'claim', 'alice').owner).toBe('alice');
+    expect(() => db.change(b.id, 'complete', 'lead')).toThrow('owner');
+  });
+  it('allows exactly one of 20 independent claimers to win', async () => {
+    const { home, db } = fixture();
+    const task = db.add('contended');
+    for (let i = 0; i < 20; i++) db.addMember(`worker${i}`);
+    const results = await Promise.all(
+      Array.from(
+        { length: 20 },
+        (_, index) =>
+          new Promise<number | null>((resolve, reject) => {
+            const child = spawn(
+              process.execPath,
+              [
+                'dist/bin/herdr-teams.js',
+                '--team',
+                'demo',
+                'task',
+                'claim',
+                task.id,
+              ],
+              {
+                env: {
+                  ...process.env,
+                  HERDR_TEAMS_HOME: home,
+                  HERDR_TEAMS_AGENT: `worker${index}`,
+                },
+                stdio: 'ignore',
+              },
+            );
+            child.on('error', reject);
+            child.on('exit', resolve);
+          }),
+      ),
+    );
+    expect(results.filter((code) => code === 0)).toHaveLength(1);
+    expect(results.filter((code) => code === 1)).toHaveLength(19);
+    expect(db.task(task.id).status).toBe('in_progress');
+  });
+});

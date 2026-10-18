@@ -1,6 +1,6 @@
 # herdr-teams — Design Plan
 
-> **Status:** draft design, not yet implemented.
+> **Status:** M0 skeleton and M1 core store implemented; M2 is next.
 
 ## Contents
 

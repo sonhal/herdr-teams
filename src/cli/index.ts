@@ -1,4 +1,5 @@
 import { Command, CommanderError } from 'commander';
+import { installCoreCommands } from './core.js';
 import { readIdentity } from './identity.js';
 
 export interface CliOptions {
@@ -8,7 +9,7 @@ export interface CliOptions {
   stderr?: (text: string) => void;
 }
 
-/** PLAN §15: command surface only. No state, agent launches, or side effects in M0. */
+/** PLAN §15: core commands plus placeholders for later milestones. */
 export function createCli(options: CliOptions): Command {
   const env = options.env ?? process.env;
   const stdout =
@@ -17,7 +18,7 @@ export function createCli(options: CliOptions): Command {
     options.stderr ?? ((text: string) => process.stderr.write(text));
   const program = new Command()
     .name('herdr-teams')
-    .description('Run a team of coding agents in herdr (M0 skeleton).')
+    .description('Run a team of coding agents in herdr.')
     .version(options.version)
     .option('--team <name>', 'team name (default: HERDR_TEAMS_TEAM)')
     .option('--json', 'print structured output')
@@ -116,6 +117,7 @@ export function createCli(options: CliOptions): Command {
   // TODO PLAN §7.3, §16 (M3): reconcile/deliver events; M0 hooks log and exit 0.
   group('_hook', ['startup', 'event'], '7.3, §16', 'M3');
   group('_action', ['start-team', 'open-board'], '16', 'M2, M8');
+  installCoreCommands(program, env, stdout);
   return program;
 }
 
@@ -126,6 +128,9 @@ export function runCli(argv: string[], options: CliOptions): number {
     return 0;
   } catch (error) {
     if (error instanceof CommanderError) return error.exitCode === 0 ? 0 : 2;
-    throw error;
+    (options.stderr ?? ((text: string) => process.stderr.write(text)))(
+      `error: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return 1;
   }
 }
