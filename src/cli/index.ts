@@ -129,6 +129,7 @@ export async function runCliAsync(
   const hook = command === '_hook' ? program.args[1] : undefined;
   const opening =
     hook === 'startup' ||
+    command === 'spawn' ||
     (command === 'team' && ['create', 'start'].includes(program.args[1] ?? ''));
   // Hooks carry no team identity; they act for every team of this session.
   // A command acts only for the team it ran against.

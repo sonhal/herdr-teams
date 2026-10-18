@@ -318,4 +318,50 @@ export class Lifecycle {
     this.db.endMember(member, 'killed');
     return { member, state: 'killed' };
   }
+
+  /**
+   * Lead-driven shutdown: accept on the member's behalf and close an idle
+   * member immediately. A member still working is left accepted; the next
+   * reconcile sends its exit prompt once it idles.
+   */
+  async shutdown(
+    member: string,
+  ): Promise<{ member: string; state: 'shut-down' | 'pending' }> {
+    const details = this.db.config().details?.[member];
+    if (!details || details.ended) return { member, state: 'shut-down' };
+    this.db.patchMember(member, {
+      shutdown_requested: true,
+      shutdown_accepted: true,
+    });
+    if (!details.pane_id) return { member, state: 'pending' };
+    let status: string;
+    try {
+      status = (await this.client.agentGet(details.pane_id)).agent.agent_status;
+    } catch (error) {
+      if (
+        error instanceof HerdrApiError &&
+        ['pane_not_found', 'not_found'].includes(error.code)
+      ) {
+        this.db.endMember(member, 'shut-down');
+        return { member, state: 'shut-down' };
+      }
+      throw error;
+    }
+    if (!['idle', 'done'].includes(status)) return { member, state: 'pending' };
+    await this.client.agentPrompt(
+      details.agent_name ?? member,
+      adapter(details.kind).exit,
+    );
+    try {
+      await this.client.paneClose(details.pane_id);
+    } catch (error) {
+      if (
+        !(error instanceof HerdrApiError) ||
+        !['pane_not_found', 'not_found'].includes(error.code)
+      )
+        throw error;
+    }
+    this.db.endMember(member, 'shut-down');
+    return { member, state: 'shut-down' };
+  }
 }
