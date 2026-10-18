@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../src/core/store.js';
 import { describe, expect, it } from 'vitest';
-import { runCli } from '../src/cli/index.js';
+import { createCli, runCli } from '../src/cli/index.js';
 import { readIdentity } from '../src/cli/identity.js';
 
 function run(argv: string[], env: NodeJS.ProcessEnv = {}) {
@@ -42,6 +42,13 @@ describe('CLI', () => {
       expect(result.stdout).toContain('--json');
     },
   );
+  it('registers the supervise command the supervisor pane runs', () => {
+    const names = createCli({ version: '0.1.0', env: {} }).commands.map((c) =>
+      c.name(),
+    );
+    expect(names).toContain('supervise');
+    expect(names).toContain('cleanup');
+  });
   it('prints the supplied package version', () => {
     expect(run(['--version'])).toEqual({
       stdout: '0.1.0\n',
