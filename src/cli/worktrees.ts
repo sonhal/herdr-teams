@@ -85,8 +85,13 @@ export function installWorktreeCommands(
   remove.action(async (target: string) =>
     print(await context(remove).trees.remove(target, remove.opts())),
   );
-  const previous = program.commands.find((c) => c.name() === 'cleanup')!;
-  (program.commands as Command[]).splice(program.commands.indexOf(previous), 1);
+  // Without the guard, splice(-1, 1) would drop the last registered command.
+  const previous = program.commands.find((c) => c.name() === 'cleanup');
+  if (previous)
+    (program.commands as Command[]).splice(
+      program.commands.indexOf(previous),
+      1,
+    );
   const cleanup = program
     .command('cleanup')
     .option('--apply', 'remove clean, merged worktrees of ended members');
