@@ -22,8 +22,10 @@ See [docs/PLAN.md](docs/PLAN.md) for the design.
 ## Development
 
 Requires Node.js ≥ 20 and npm. M1 implements persistent teams, tasks with
-dependencies and exclusive claiming, inboxes, and an event log. Agent lifecycle,
-delivery, hooks, board, and supervisor remain placeholders.
+dependencies and exclusive claiming, inboxes, and an event log. M3 adds idle inbox delivery, event hooks, turn reports, auto-claim and restart
+reconciliation. Agent lifecycle, board and the long-running supervisor remain
+placeholders. Delivery requires registered members running under their member
+names in herdr; lifecycle setup awaits M2.
 
 ```sh
 npm ci
@@ -65,5 +67,8 @@ restricted to the lead or a user outside a member pane. `task update` accepts
 `--subject` and `--description`; `task complete` accepts `--result`.
 `team list`, `task list`, `task show`, `broadcast` and `report` are also available.
 Core commands currently print JSON, including when `--json` is omitted.
-Messages are persisted for delivery in M3. Generated state belongs outside the
-repository or in an ignored directory.
+Messages are persisted and delivered in batches when recipients are idle.
+Blocked recipients retain their mail. `--urgent` mail stays queued until idle
+while working-agent steering awaits M4. Set `auto_claim: false` in team config
+to disable automatic claiming. Generated state belongs outside the repository
+or in an ignored directory.

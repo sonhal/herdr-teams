@@ -16,6 +16,7 @@ export interface Team {
   name: string;
   lead: string;
   members: string[];
+  auto_claim?: boolean;
   createdAt: string;
 }
 export interface Task {
@@ -33,6 +34,7 @@ export interface Task {
   updatedAt: string;
 }
 export interface Message {
+  kind?: 'report' | 'advisory';
   id: string;
   from: string;
   to: string;
@@ -296,7 +298,13 @@ export class Store {
       return task;
     });
   }
-  send(from: string, to: string, body: string, urgent = false): Message {
+  send(
+    from: string,
+    to: string,
+    body: string,
+    urgent = false,
+    kind?: 'report' | 'advisory',
+  ): Message {
     if (!this.config().members.includes(to))
       throw new Error(`Unknown recipient: ${to}`);
     if (!body.trim()) throw new Error('Message body is required');
@@ -306,6 +314,7 @@ export class Store {
       to,
       body,
       urgent,
+      ...(kind ? { kind } : {}),
       createdAt: new Date().toISOString(),
     };
     appendFileSync(
@@ -324,6 +333,39 @@ export class Store {
           .map((line) => JSON.parse(line) as Message)
       : [];
   }
+  deliveryState(): DeliveryState {
+    const path = join(this.root, 'delivery.json');
+    return existsSync(path)
+      ? read<DeliveryState>(path)
+      : { cursors: {}, reports: {} };
+  }
+  saveDeliveryState(state: DeliveryState): void {
+    atomic(join(this.root, 'delivery.json'), state);
+  }
+  autoClaim(actor: string): Task | undefined {
+    return this.lock(() => {
+      if (
+        this.tasks().some(
+          (t) =>
+            t.owner === actor &&
+            (t.status === 'in_progress' || t.status === 'planning'),
+        )
+      )
+        return;
+      const task = this.tasks().find(
+        (t) =>
+          t.status === 'pending' &&
+          t.owner === null &&
+          t.blockedBy.every((id) => this.task(id).status === 'completed'),
+      );
+      if (!task) return;
+      task.owner = actor;
+      task.status = 'in_progress';
+      this.save(task);
+      this.event('task.claim', task);
+      return task;
+    });
+  }
   event(type: string, data: unknown): void {
     appendFileSync(
       join(this.root, 'events.jsonl'),
@@ -335,4 +377,10 @@ export class Store {
       }) + '\n',
     );
   }
+}
+
+export interface DeliveryState {
+  blocked?: Record<string, boolean>;
+  cursors: Record<string, string>;
+  reports: Record<string, number>;
 }
