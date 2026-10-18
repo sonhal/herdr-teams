@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Store } from '../src/core/store.js';
 import { describe, expect, it } from 'vitest';
 import { runCli } from '../src/cli/index.js';
 import { readIdentity } from '../src/cli/identity.js';
@@ -18,7 +22,7 @@ function run(argv: string[], env: NodeJS.ProcessEnv = {}) {
   return { stdout, stderr, exitCode };
 }
 
-describe('CLI skeleton', () => {
+describe('CLI', () => {
   it.each([{ argv: [] }, { argv: ['--help'] }])(
     'prints help for %j without executing a command',
     ({ argv }) => {
@@ -46,48 +50,26 @@ describe('CLI skeleton', () => {
     });
   });
   it.each([
-    ['team'],
-    ...['status', 'log', 'board'].map((name) => [name]),
-    ['_action', 'start-team'],
-    ['_action', 'open-board'],
-  ])('exposes a side-effect-free placeholder for %j', (...argv) => {
-    const result = run(argv);
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('not implemented');
-    expect(result.stdout).toContain('PLAN §');
-    expect(result.stderr).toBe('');
-  });
-  it.each([
-    ['--team', 'override', '--json', '_action', 'open-board'],
-    ['_action', '--team', 'override', 'open-board', '--json'],
-    ['_action', 'open-board', '--team', 'override', '--json'],
+    ['--team', 'override', '--json', 'task', 'list'],
+    ['task', '--team', 'override', 'list', '--json'],
+    ['task', 'list', '--team', 'override', '--json'],
   ])('accepts global flags at every command depth: %j', (...argv) => {
-    const result = run(argv, {
-      HERDR_TEAMS_TEAM: 'default',
-      HERDR_TEAMS_AGENT: 'alice',
-      HERDR_TEAMS_HOME: '/state',
-      HERDR_PANE_ID: 'w1:p2',
-    });
-    expect(result.exitCode).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({
-      command: '_action open-board',
-      status: 'not implemented',
-      identity: {
-        team: 'override',
-        agent: 'alice',
-        home: '/state',
-        paneId: 'w1:p2',
-      },
-    });
-  });
-  it('uses environment identity when --team is omitted', () => {
-    const result = run(['status', '--json'], {
-      HERDR_TEAMS_TEAM: 'auth',
-      HERDR_PLUGIN_STATE_DIR: '/plugin-state',
-    });
-    expect(JSON.parse(result.stdout)).toMatchObject({
-      identity: { team: 'auth', home: '/plugin-state' },
-    });
+    const home = mkdtempSync(join(tmpdir(), 'cli-'));
+    const db = new Store(home, 'override');
+    db.create('lead');
+    db.add('flag test');
+    try {
+      const result = run(argv, {
+        HERDR_TEAMS_HOME: home,
+        HERDR_TEAMS_TEAM: 'default',
+      });
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject([
+        { subject: 'flag test' },
+      ]);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
   it.each([['nonsense'], ['team', 'nonsense'], ['--team']])(
     'reports usage errors for %j',
