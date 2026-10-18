@@ -199,7 +199,7 @@ export async function ensureSupervisor(db: Store, client: HerdrClient) {
         '--entrypoint',
         'supervisor',
         '--placement',
-        existing?.mode === 'tab' ? 'tab' : 'split',
+        existing?.mode === 'pane' ? 'split' : 'tab',
         '--no-focus',
         '--env',
         `HERDR_TEAMS_HOME=${db.home}`,
@@ -217,7 +217,7 @@ export async function ensureSupervisor(db: Store, client: HerdrClient) {
     db.updateTeam((config) => {
       config.supervisor = {
         ...config.supervisor,
-        mode: config.supervisor?.mode ?? 'pane',
+        mode: config.supervisor?.mode ?? 'tab',
         pane_id: paneId,
       };
     });

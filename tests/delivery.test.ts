@@ -469,9 +469,11 @@ it('creates a team from an ordinary herdr pane in the hooks’ state home', asyn
     expect(new Store(state, 'demo').config()).toMatchObject({
       herdr_socket: 'session-a.sock',
       lead_pane_id: 'w1:p1',
-      supervisor: { pane_id: 'w1:p5' },
+      supervisor: { mode: 'tab', pane_id: 'w1:p5' },
     });
-    expect((await fake.calls())[1]).toContain(`HERDR_TEAMS_HOME=${state}`);
+    const open = (await fake.calls())[1]!;
+    expect(open).toContain(`HERDR_TEAMS_HOME=${state}`);
+    expect(open[open.indexOf('--placement') + 1]).toBe('tab');
   } finally {
     await fake.cleanup();
   }

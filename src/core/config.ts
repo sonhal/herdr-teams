@@ -287,7 +287,7 @@ export class Config {
       if (template.worktree_requests)
         team.worktree_requests = template.worktree_requests;
       if (template.hooks) team.hooks = template.hooks;
-      team.supervisor = template.supervisor ?? { mode: 'pane' };
+      team.supervisor = template.supervisor ?? { mode: 'tab' };
       if (this.env.HERDR_PANE_ID) team.lead_pane_id = this.env.HERDR_PANE_ID;
       if (this.env.HERDR_WORKSPACE_ID)
         team.workspace_id = this.env.HERDR_WORKSPACE_ID;
@@ -364,7 +364,7 @@ export class Config {
     }
     const supervisor = {
       ...team.supervisor,
-      mode: team.supervisor?.mode ?? 'pane',
+      mode: team.supervisor?.mode ?? 'tab',
     };
     delete supervisor.pane_id;
     values[name] = {
