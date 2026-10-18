@@ -58,7 +58,7 @@ it('isolates two writers and merges both only when explicitly requested', async 
   const trees = new Worktrees(db, client);
   for (const member of ['alice', 'bob']) {
     db.reserveMember(member, { kind: 'codex', state: 'starting' });
-    const tree = await trees.create(member);
+    const tree = await trees.create(member, home);
     writeFileSync(join(tree.path, `${member}.txt`), member);
     git(tree.path, 'add', '.');
     git(tree.path, 'commit', '-m', member);

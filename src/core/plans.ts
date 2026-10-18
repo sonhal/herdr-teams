@@ -82,7 +82,7 @@ export class Plans {
         throw new Error('Task has no submitted plan or owner');
       current.plan.verdict = approve ? 'approved' : 'rejected';
       current.plan.feedback = feedback ?? null;
-      if (!['completed', 'failed', 'deleted'].includes(current.status))
+      if (current.status !== 'completed')
         current.status = approve ? 'in_progress' : 'planning';
     });
     this.db.send(

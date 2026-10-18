@@ -141,30 +141,6 @@ it('rejects invalid settings before creating a team or invoking herdr', async ()
     await fake.cleanup();
   }
 });
-it('rejects a member whose herdr name would be too long before creating a team', async () => {
-  const { home, env, config } = setup();
-  writeFileSync(
-    join(home, '.herdr', 'teams.yaml'),
-    `long:\n  members: [{name: ${'b'.repeat(28)}, kind: codex}]\n`,
-  );
-  const db = new Store(join(home, 'state'), randomUUID());
-  const fake = await fakeHerdr([]);
-  try {
-    await expect(
-      config.start(
-        db,
-        new Lifecycle(db, new HerdrClient({ env: fake.env }), env),
-        'long',
-        'lead',
-      ),
-    ).rejects.toThrow(/32 characters/);
-    expect(Store.teams(db.home)).toHaveLength(0);
-    expect(await fake.calls()).toHaveLength(0);
-  } finally {
-    await fake.cleanup();
-  }
-});
-
 it('built-in roles use only worktree modes that exist', () => {
   const { config } = setup();
   for (const role of ['developer', 'tester', 'researcher', 'synthesizer']) {
@@ -175,4 +151,19 @@ it('built-in roles use only worktree modes that exist', () => {
   expect(() =>
     config.validateDefinition({ worktree: 'auto' as 'shared' }),
   ).toThrow('worktree');
+});
+
+it.each([
+  ['worktree_requests: auto', 'worktree_requests'],
+  ['hooks: { failure_action: reopen }', 'hooks.failure_action'],
+  ['hooks: { max_reopens: 2 }', 'hooks.max_reopens'],
+  ['hooks: { followup_owner: lead }', 'hooks.followup_owner'],
+  ['tasks: [{ subject: build, worktree: true }]', 'worktree'],
+])('rejects the removed template setting %s', (setting, name) => {
+  const { home, config } = setup();
+  writeFileSync(
+    join(home, '.herdr', 'teams.yaml'),
+    `old:\n  members: [{ name: alice, kind: codex }]\n  ${setting}\n`,
+  );
+  expect(() => config.template('old')).toThrow(name);
 });

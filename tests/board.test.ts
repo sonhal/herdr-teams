@@ -55,7 +55,7 @@ it('board reads do not change cursors, tasks or events or call herdr', async () 
   try {
     let output = '';
     expect(
-      await runCliAsync(['--team', db.team, 'board', '--once'], {
+      await runCliAsync(['--team', db.id, 'board', '--once'], {
         version: 'test',
         env: { ...fake.env, HERDR_TEAMS_HOME: db.home },
         stdout: (s) => {

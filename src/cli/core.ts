@@ -1,60 +1,40 @@
 import { Tasks } from '../core/tasks.js';
 import { Command } from 'commander';
 import { randomUUID } from 'node:crypto';
-import { HerdrClient } from '../herdr/index.js';
-import { Worktrees, worktreeStatus } from '../core/worktrees.js';
 import { Store } from '../core/store.js';
-import { pluginStateDir, readIdentity, resolveTeamId } from './identity.js';
+import { pluginStateDir, readIdentity } from './identity.js';
+import { group, printer, teamContext, type Output } from './context.js';
 
 export function installCoreCommands(
   program: Command,
   env: NodeJS.ProcessEnv,
-  output: (text: string) => void,
-  warn: (text: string) => void = () => {},
+  output: Output,
+  warn: Output = () => {},
 ): void {
-  function replace(parent: Command, old: string, usage: string): Command {
-    const previous = parent.commands.find((c) => c.name() === old);
-    if (previous)
-      (parent.commands as Command[]).splice(
-        parent.commands.indexOf(previous),
-        1,
-      );
-    return parent.command(usage);
-  }
-  function context(command: Command) {
-    const flags = command.optsWithGlobals<{ team?: string; json?: boolean }>();
-    const identity = readIdentity(env, flags.team);
-    if (!identity.home)
+  const print = printer(output);
+  function home(command: Command): string {
+    const flags = command.optsWithGlobals<{ team?: string }>();
+    const home = readIdentity(env, flags.team).home;
+    if (!home)
       throw new Error('Set HERDR_TEAMS_HOME or HERDR_PLUGIN_STATE_DIR');
-    return { identity, home: identity.home };
+    return home;
   }
-  function store(command: Command, privileged = false) {
-    const { identity, home } = context(command);
-    if (!identity.teamId)
-      throw new Error('Select a team with --team or HERDR_TEAMS_TEAM');
-    const db = new Store(home, resolveTeamId(home, identity.teamId)!);
-    const actor = db.authorize(identity.agent, privileged, identity.paneId);
-    return { db, actor };
-  }
-  function print(value: unknown): void {
-    output(JSON.stringify(value, null, 2) + '\n');
-  }
-  const team = program.commands.find((c) => c.name() === 'team')!;
-  team.description('Create and list persistent teams');
-  const create = replace(team, 'create', 'create <name>').option(
-    '--lead <name>',
-    'lead name (default: current agent or lead)',
-  );
+  const team = group(program, 'team');
+  const create = team
+    .command('create <name>')
+    .option('--lead <name>', 'lead name (default: current agent or lead)');
   create.action((name: string) => {
-    const { home, identity } = context(create);
+    const stateHome = home(create);
     const hooks = pluginStateDir(env);
-    if (hooks && hooks !== home)
+    if (hooks && hooks !== stateHome)
       warn(
-        `warning: herdr's startup and event hooks read ${hooks}, not ${home}; event hooks will not find this team\n`,
+        `warning: herdr's startup and event hooks read ${hooks}, not ${stateHome}; event hooks will not find this team\n`,
       );
-    const db = new Store(home, randomUUID());
+    const db = new Store(stateHome, randomUUID());
     db.create(
-      create.opts<{ lead?: string }>().lead ?? identity.agent ?? 'lead',
+      create.opts<{ lead?: string }>().lead ??
+        readIdentity(env).agent ??
+        'lead',
       name,
     );
     db.bindSession(env.HERDR_SOCKET_PATH);
@@ -66,120 +46,106 @@ export function installCoreCommands(
       }),
     );
   });
-  const list = replace(team, 'list', 'list');
-  list.action(() => print(Store.teams(context(list).home)));
-  const tasks = program.commands.find((c) => c.name() === 'task')!;
-  tasks.description('Manage persistent tasks and dependencies');
-  const add = replace(tasks, 'add', 'add <subject>')
+  const list = team.command('list');
+  list.action(() => print(Store.teams(home(list))));
+
+  const tasks = group(program, 'task');
+  const add = tasks
+    .command('add <subject>')
     .option('--description <text>', 'task description')
-    .option('--worktree', 'require a dedicated worktree')
     .option('--gate <command>', 'completion gate')
     .option('--plan-mode', 'require a plan');
   add.action(async (subject: string) => {
-    const { db, actor } = store(add);
+    const { db, actor } = teamContext(add, env);
     print(await new Tasks(db, env).add(actor, subject, add.opts()));
   });
-  const taskList = replace(tasks, 'list', 'list');
-  taskList.action(() => print(store(taskList).db.tasks()));
-  const show = replace(tasks, 'show', 'show <id>');
-  show.action((id: string) => print(store(show).db.task(id)));
-  for (const action of [
-    'claim',
-    'assign',
-    'release',
-    'complete',
-    'update',
-  ] as const) {
-    const cmd = replace(
-      tasks,
-      action,
-      `${action} <id>${action === 'assign' ? ' <owner>' : ''}`,
-    );
-    if (action === 'complete')
-      cmd.option('--result <text>', 'completion summary');
-    if (action === 'update')
-      cmd
-        .option('--subject <text>', 'new subject')
-        .option('--description <text>', 'new description');
-    cmd.action((id: string, owner: unknown) => {
-      const { db, actor } = store(
-        cmd,
-        action === 'assign' || action === 'release' || action === 'update',
-      );
-      const flags = cmd.opts<{
-        result?: string;
-        subject?: string;
-        description?: string;
-      }>();
-      if (action === 'complete')
-        return new Tasks(db, env)
-          .complete(id, actor, flags.result)
-          .then((completed) => {
-            if (completed.worktree?.binding)
-              db.send(
-                actor,
-                db.config().lead,
-                `Task #${id} completed: ${JSON.stringify(worktreeStatus(completed.worktree.binding))}`,
-                false,
-                'report',
-              );
-            print(completed);
-          });
-      const changed = db.change(
+  const taskList = tasks.command('list');
+  taskList.action(() => print(teamContext(taskList, env).db.tasks()));
+  const show = tasks.command('show <id>');
+  show.action((id: string) => print(teamContext(show, env).db.task(id)));
+  const claim = tasks.command('claim <id>');
+  claim.action((id: string) => {
+    const { db, actor } = teamContext(claim, env);
+    print(db.change(id, 'claim', actor));
+  });
+  const assign = tasks.command('assign <id> <owner>');
+  assign.action((id: string, owner: string) => {
+    const { db, actor } = teamContext(assign, env, true);
+    print(db.change(id, 'assign', actor, owner));
+  });
+  const complete = tasks
+    .command('complete <id>')
+    .option('--result <text>', 'completion summary');
+  complete.action(async (id: string) => {
+    const { db, actor } = teamContext(complete, env);
+    print(
+      await new Tasks(db, env).complete(
         id,
-        action,
         actor,
-        action === 'assign' ? String(owner) : flags.subject,
-        flags.description,
-      );
-      if (
-        action === 'claim' &&
-        changed.worktree?.required &&
-        !changed.worktree.binding
-      ) {
-        return new Worktrees(db, new HerdrClient({ env }))
-          .create(id)
-          .then(() => print(db.task(id)))
-          .catch((error: unknown) => {
-            db.change(id, 'release', actor);
-            throw error;
-          });
-      }
-      print(db.task(id));
+        complete.opts<{ result?: string }>().result,
+      ),
+    );
+  });
+  const update = tasks
+    .command('update <id>')
+    .option('--subject <text>', 'new subject')
+    .option('--description <text>', 'new description');
+  update.action((id: string) => {
+    const { db, actor } = teamContext(update, env, true);
+    const flags = update.opts<{ subject?: string; description?: string }>();
+    print(db.change(id, 'update', actor, flags.subject, flags.description));
+  });
+  const reopen = tasks.command('reopen <id>');
+  reopen.action((id: string) => {
+    const { db } = teamContext(reopen, env, true);
+    const task = db.editTask(id, (t) => {
+      if (t.status !== 'completed')
+        throw new Error('Only a completed task may be reopened');
+      t.status = 'pending';
+      t.result = null;
+      t.reopens++;
+      delete t.plan;
     });
-  }
-  const dep = tasks.commands.find((c) => c.name() === 'dep')!;
+    if (task.owner)
+      db.send(db.config().lead, task.owner, `Task #${id} reopened`);
+    print(task);
+  });
+  const dep = group(tasks, 'dep');
   for (const action of ['add', 'rm']) {
-    const cmd = replace(dep, action, `${action} <id> <dependency>`);
+    const cmd = dep.command(`${action} <id> <dependency>`);
     cmd.action((id: string, dependency: string) =>
-      print(store(cmd, true).db.dependency(id, dependency, action === 'rm')),
+      print(
+        teamContext(cmd, env, true).db.dependency(
+          id,
+          dependency,
+          action === 'rm',
+        ),
+      ),
     );
   }
-  const msg = program.commands.find((c) => c.name() === 'msg')!;
-  msg.description('Queue messages in member inboxes');
-  const send = replace(msg, 'send', 'send <recipient> <body>').option(
-    '--urgent',
-    'interrupt a working recipient (lead or user only)',
-  );
+
+  const send = group(program, 'msg')
+    .command('send <recipient> <body>')
+    .option('--urgent', 'interrupt a working recipient (lead or user only)');
   send.action((recipient: string, body: string) => {
     const urgent = send.opts<{ urgent?: boolean }>().urgent;
     // Urgent mail can press Esc in the recipient's pane, like interrupt.
-    const { db, actor } = store(send, urgent);
+    const { db, actor } = teamContext(send, env, urgent);
     print(db.send(actor, recipient, body, urgent));
   });
-  const inbox = replace(program, 'inbox', 'inbox');
+  const inbox = program.command('inbox');
   inbox.action(() => {
-    const { db, actor } = store(inbox);
+    const { db, actor } = teamContext(inbox, env);
     print(db.inbox(actor));
   });
-  const report = replace(program, 'report', 'report <body>');
+  const report = program.command('report <body>');
   report.action((body: string) => {
-    const { db, actor } = store(report);
+    const { db, actor } = teamContext(report, env);
     print(db.send(actor, db.config().lead, body));
   });
-  const broadcast = replace(program, 'broadcast', 'broadcast <body>');
+  const broadcast = program.command('broadcast <body>');
   broadcast.action((body: string) => {
-    const { db, actor } = store(broadcast);
+    const { db, actor } = teamContext(broadcast, env);
     print(
       db
         .config()

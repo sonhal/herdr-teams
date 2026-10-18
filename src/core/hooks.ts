@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { MAX_MESSAGE_BYTES, Store, clip, type Task } from './store.js';
+import { Store, clip, type Task } from './store.js';
 
 export interface HookResult {
   code: number;
@@ -15,10 +15,12 @@ export class Hooks {
     readonly db: Store,
     readonly env: NodeJS.ProcessEnv,
   ) {}
+  /** A task's hooks run in its owner's worktree, if it has one. */
   cwd(task?: Task): string {
+    const team = this.db.config();
     return (
-      task?.worktree?.binding?.path ??
-      this.db.config().repository_dir ??
+      (task?.owner && team.details?.[task.owner]?.worktree?.path) ||
+      team.repository_dir ||
       process.cwd()
     );
   }
@@ -44,11 +46,11 @@ export class Hooks {
           ...this.env,
           HERDR_TEAMS_HOME: this.db.home,
           HERDR_TEAMS_EVENT: event,
-          HERDR_TEAMS_TEAM: this.db.team,
+          HERDR_TEAMS_TEAM: this.db.id,
           HERDR_TEAMS_AGENT: actor,
           HERDR_TEAMS_TASK_ID: task?.id ?? '',
           HERDR_TEAMS_TASK_JSON: JSON.stringify(task ?? payload),
-          PI_TEAM: this.db.team,
+          PI_TEAM: this.db.id,
         },
         stdio: ['pipe', 'pipe', 'pipe'],
       });
@@ -85,7 +87,7 @@ export class Hooks {
       child.stdin.end(
         JSON.stringify({
           event,
-          team: this.db.team,
+          team: this.db.id,
           actor,
           task,
           data: payload,
@@ -136,56 +138,27 @@ export class Hooks {
       );
     return { code: 0, stderr: '' };
   }
+  /**
+   * Feedback goes to the actor. Exit 2 is a deliberate rejection; any other
+   * failure is a broken hook, which the lead also hears about.
+   */
   failure(actor: string, task: Task | undefined, result: HookResult): void {
     const text = clip(result.stderr.trim() || `Hook exited ${result.code}`);
-    const team = this.db.config();
-    this.db.send(team.lead, actor, text);
+    const lead = this.db.config().lead;
+    this.db.send(lead, actor, text);
     this.db.event('hook.failed', {
       actor,
       task: task?.id,
       code: result.code,
       stderr: text,
     });
-    if (result.code === 2) return;
-    this.db.send(
-      actor,
-      team.lead,
-      clip(`Hook failure${task ? ` on task #${task.id}` : ''}: ${text}`),
-      false,
-      'advisory',
-    );
-    const policy = team.hooks?.failure_action ?? 'warn';
-    if (
-      task &&
-      ['reopen', 'reopen_followup'].includes(policy) &&
-      task.reopens < (team.hooks?.max_reopens ?? 3)
-    )
-      this.db.editTask(task.id, (t) => {
-        t.status = 'in_progress';
-        t.reopens += 1;
-      });
-    // A task whose gate keeps failing needs one follow-up, not one per attempt.
-    if (
-      task &&
-      ['followup', 'reopen_followup'].includes(policy) &&
-      !this.db
-        .tasks()
-        .some((t) => t.followup_of === task.id && t.status !== 'completed')
-    ) {
-      const followup = this.db.add(
-        `Follow up on #${task.id}`,
-        // Hook output may hold escape codes, which take six bytes as JSON.
-        clip(text, MAX_MESSAGE_BYTES / 6),
-        { followupOf: task.id },
+    if (result.code !== 2)
+      this.db.send(
+        actor,
+        lead,
+        clip(`Hook failure${task ? ` on task #${task.id}` : ''}: ${text}`),
+        false,
+        'advisory',
       );
-      const target = team.hooks?.followup_owner ?? 'member';
-      if (target !== 'none')
-        this.db.change(
-          followup.id,
-          'assign',
-          team.lead,
-          target === 'lead' ? team.lead : actor,
-        );
-    }
   }
 }

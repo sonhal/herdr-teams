@@ -34,7 +34,7 @@ function parse(text: string): unknown {
   }
 }
 
-// Validate the common fields on which M1–M2 depend before exposing typed results.
+// Validate the fields herdr-teams reads before exposing typed results.
 function pane(value: unknown): boolean {
   return (
     record(value) &&
@@ -54,9 +54,7 @@ function agent(value: unknown): boolean {
   );
 }
 
-/** CLI wrapper, not a socket client. Successful calls return the unwrapped .result.
- * TODO PLAN §4.1 (M2+): add other herdr operations only as their milestone needs them.
- */
+/** CLI wrapper, not a socket client. Successful calls return the unwrapped .result. */
 export class HerdrClient {
   private readonly env: NodeJS.ProcessEnv;
   private readonly runner: CommandRunner;

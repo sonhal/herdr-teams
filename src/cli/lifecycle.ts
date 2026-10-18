@@ -3,47 +3,31 @@ import { join, resolve } from 'node:path';
 import { Config } from '../core/config.js';
 import { installShim } from '../core/shim.js';
 import { Command } from 'commander';
-import { Store } from '../core/store.js';
 import { Lifecycle, type SpawnOptions } from '../core/lifecycle.js';
 import { HerdrClient } from '../herdr/index.js';
-import { readSelectedIdentity } from './identity.js';
+import { group, printer, teamContext, type Output } from './context.js';
 
 export function installLifecycleCommands(
   program: Command,
   env: NodeJS.ProcessEnv,
-  output: (text: string) => void,
+  output: Output,
 ) {
-  const print = (value: unknown) =>
-    output(JSON.stringify(value, null, 2) + '\n');
-  function replace(name: string, usage: string) {
-    const previous = program.commands.find((c) => c.name() === name);
-    if (previous)
-      (program.commands as Command[]).splice(
-        program.commands.indexOf(previous),
-        1,
-      );
-    return program.command(usage);
-  }
+  const print = printer(output);
   function context(cmd: Command, privileged = true) {
-    const identity = readSelectedIdentity(
-      env,
-      cmd.optsWithGlobals<{ team?: string }>().team,
-    );
-    if (!identity.home || !identity.teamId)
-      throw new Error('Set HERDR_TEAMS_HOME and select a team');
-    const db = new Store(identity.home, identity.teamId);
-    const actor = db.authorize(identity.agent, privileged, identity.paneId);
+    const { db, actor } = teamContext(cmd, env, privileged);
     return {
       db,
       actor,
       lifecycle: new Lifecycle(db, new HerdrClient({ env }), env),
     };
   }
-  const shim = replace('install-shim', 'install-shim').option(
-    '--directory <path>',
-    'directory on PATH',
-    join(homedir(), '.local', 'bin'),
-  );
+  const shim = program
+    .command('install-shim')
+    .option(
+      '--directory <path>',
+      'directory on PATH',
+      join(homedir(), '.local', 'bin'),
+    );
   shim.action(() => {
     const target = installShim(
       resolve(shim.opts<{ directory: string }>().directory),
@@ -52,7 +36,7 @@ export function installLifecycleCommands(
   });
   // herdr runs actions with HERDR_PLUGIN_ROOT set but shows only a log, so
   // the outcome is reported as a herdr notification.
-  const actions = program.commands.find((c) => c.name() === '_action')!;
+  const actions = group(program, '_action');
   const shimAction = actions
     .command('install-shim')
     .option(
@@ -86,7 +70,8 @@ export function installLifecycleCommands(
     ]);
     print({ path: target, instruction: 'Ensure this directory is on PATH' });
   });
-  const spawn = replace('spawn', 'spawn <name>')
+  const spawn = program
+    .command('spawn <name>')
     .option('--agent <definition>', 'agent definition')
     .option('--kind <kind>', 'agent CLI')
     .option('--model <model>', 'model name')
@@ -113,7 +98,8 @@ export function installLifecycleCommands(
     };
     print(await lifecycle.spawn(member, settings));
   });
-  const shutdown = replace('shutdown', 'shutdown [name]')
+  const shutdown = program
+    .command('shutdown [name]')
     .option('--accept', 'accept your pending shutdown request')
     .option('--reject <reason>', 'reject your pending shutdown request');
   shutdown.action((member?: string) => {
@@ -133,14 +119,13 @@ export function installLifecycleCommands(
           : lifecycle.requestShutdown(member!),
     );
   });
-  const kill = replace('kill', 'kill <name>');
+  const kill = program.command('kill <name>');
   kill.action(async (member: string) =>
     print(await context(kill).lifecycle.kill(member)),
   );
-  const done = replace('done', 'done').option(
-    '--force',
-    'kill remaining teammates',
-  );
+  const done = program
+    .command('done')
+    .option('--force', 'kill remaining teammates');
   done.action(async () => {
     const { db, lifecycle } = context(done);
     const force = done.opts<{ force?: boolean }>().force;
