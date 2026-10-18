@@ -101,6 +101,16 @@ export class Config {
       join(this.cwd, '.pi', 'agents'),
       join(this.cwd, '.claude', 'agents'),
       join(this.global, 'agents'),
+      join(
+        this.env.PI_CODING_AGENT_DIR ??
+          join(this.env.HOME ?? homedir(), '.pi', 'agent'),
+        'agents',
+      ),
+      join(
+        this.env.CLAUDE_CONFIG_DIR ??
+          join(this.env.HOME ?? homedir(), '.claude'),
+        'agents',
+      ),
       join(this.builtin, 'agents'),
     ];
     const path = roots.map((root) => join(root, `${name}.md`)).find(existsSync);

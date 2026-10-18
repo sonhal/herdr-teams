@@ -27,6 +27,9 @@ function setup() {
     ...process.env,
     HERDR_PANE_ID: undefined,
     HERDR_WORKSPACE_ID: undefined,
+    HOME: join(home, 'user'),
+    PI_CODING_AGENT_DIR: join(home, 'pi-config'),
+    CLAUDE_CONFIG_DIR: join(home, 'claude-config'),
     XDG_CONFIG_HOME: join(home, 'global'),
   };
   return { home, env, config: new Config(home, env) };
@@ -166,4 +169,91 @@ it.each([
     `old:\n  members: [{ name: alice, kind: codex }]\n  ${setting}\n`,
   );
   expect(() => config.template('old')).toThrow(name);
+});
+
+it('resolves compatibility roles in project, global and built-in precedence order', () => {
+  const { home, env, config } = setup();
+  const roots = [
+    join(home, '.herdr', 'agents'),
+    join(home, '.pi', 'agents'),
+    join(home, '.claude', 'agents'),
+    join(config.global, 'agents'),
+    join(env.PI_CODING_AGENT_DIR, 'agents'),
+    join(env.CLAUDE_CONFIG_DIR, 'agents'),
+  ];
+  for (const [index, root] of roots.entries()) {
+    mkdirSync(root, { recursive: true });
+    writeFileSync(
+      join(root, 'reviewer.md'),
+      `---\nmodel: source-${index}\n---\nRole ${index}`,
+    );
+  }
+  for (const [index, root] of roots.entries()) {
+    expect(config.definition('reviewer')).toMatchObject({
+      model: `source-${index}`,
+      instructions: `Role ${index}`,
+    });
+    rmSync(join(root, 'reviewer.md'));
+  }
+  expect(config.definition('reviewer').instructions).toBeTruthy();
+});
+
+it.each(['.pi', '.claude'])(
+  'starts a team using an existing %s role',
+  async (folder) => {
+    const { home, env, config } = setup();
+    mkdirSync(join(home, folder, 'agents'), { recursive: true });
+    writeFileSync(
+      join(home, folder, 'agents', 'custom.md'),
+      '---\nname: custom\ndescription: Review changes\nmodel: test-model\ntools: Read, Bash\n---\nPreserve these role instructions.',
+    );
+    writeFileSync(
+      join(home, '.herdr', 'teams.yaml'),
+      'compat:\n  defaults: {kind: codex}\n  members: [{name: alice, agent: custom}]\n',
+    );
+    const db = new Store(join(home, 'state'), randomUUID());
+    const fake = await fakeHerdr([
+      jsonReply({ type: 'tab_created', root_pane: pane }),
+      jsonReply({ type: 'agent_started', agent, argv: ['codex'] }),
+      jsonReply({ type: 'pane_info', pane }),
+      jsonReply({ type: 'agent_prompted', agent }),
+      jsonReply({
+        type: 'agent_info',
+        agent: { ...agent, name: newAgentName('compat', 'alice', db.id) },
+      }),
+    ]);
+    try {
+      await config.start(
+        db,
+        new Lifecycle(db, new HerdrClient({ env: fake.env }), env),
+        'compat',
+        'lead',
+      );
+      expect(db.config().details!.alice).toMatchObject({
+        kind: 'codex',
+        model: 'test-model',
+        instructions: 'Preserve these role instructions.',
+      });
+      expect((await fake.calls())[3]![3]).toContain(
+        'Preserve these role instructions.',
+      );
+    } finally {
+      await fake.cleanup();
+    }
+  },
+);
+
+it('uses standard user directories when compatibility overrides are absent', () => {
+  const { home, env } = setup();
+  delete (env as Partial<typeof env>).PI_CODING_AGENT_DIR;
+  delete (env as Partial<typeof env>).CLAUDE_CONFIG_DIR;
+  const config = new Config(home, env);
+  for (const [name, root] of [
+    ['pi-role', join(env.HOME, '.pi', 'agent', 'agents')],
+    ['claude-role', join(env.HOME, '.claude', 'agents')],
+  ]) {
+    mkdirSync(root!, { recursive: true });
+    writeFileSync(join(root!, `${name}.md`), 'User role');
+    expect(config.definition(name!).instructions).toBe('User role');
+  }
 });

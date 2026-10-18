@@ -165,7 +165,13 @@ a plain shell, or when that agent cannot be launched, pass `--kind` (`claude`,
 Put reusable roles in `.herdr/agents/<name>.md` with YAML frontmatter and a
 markdown instruction body. Project `.herdr/` definitions take precedence over
 `.pi/agents/`, `.claude/agents/`, global definitions in
-`~/.config/herdr-teams/agents/` and the built-in roles.
+`~/.config/herdr-teams/agents/`, user pi definitions in `~/.pi/agent/agents/`,
+user Claude definitions in `~/.claude/agents/`, and the built-in roles, in that
+order. `PI_CODING_AGENT_DIR` and `CLAUDE_CONFIG_DIR` override the corresponding
+user configuration directories. Existing roles can be referenced with
+`agent: <filename-without-extension>` or `spawn --agent <name>`; their markdown
+body supplies the teammate's instructions. CLI kind follows the normal team
+defaults unless the definition sets `kind`.
 
 ```yaml
 ---
