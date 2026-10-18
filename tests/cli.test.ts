@@ -49,9 +49,6 @@ describe('CLI skeleton', () => {
     ['team'],
     ['team', 'start', 'template'],
     ['team', 'save', 'template'],
-    ['plan', 'submit', '1', '--file', 'plan.md'],
-    ['plan', 'approve', '1'],
-    ['plan', 'reject', '1'],
     ...['status', 'log', 'board'].map((name) => [name]),
     ['_action', 'start-team'],
     ['_action', 'open-board'],
@@ -63,9 +60,9 @@ describe('CLI skeleton', () => {
     expect(result.stderr).toBe('');
   });
   it.each([
-    ['--team', 'override', '--json', 'plan', 'approve', '1'],
-    ['plan', '--team', 'override', 'approve', '1', '--json'],
-    ['plan', 'approve', '1', '--team', 'override', '--json'],
+    ['--team', 'override', '--json', '_action', 'open-board'],
+    ['_action', '--team', 'override', 'open-board', '--json'],
+    ['_action', 'open-board', '--team', 'override', '--json'],
   ])('accepts global flags at every command depth: %j', (...argv) => {
     const result = run(argv, {
       HERDR_TEAMS_TEAM: 'default',
@@ -75,7 +72,7 @@ describe('CLI skeleton', () => {
     });
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({
-      command: 'plan approve',
+      command: '_action open-board',
       status: 'not implemented',
       identity: {
         team: 'override',

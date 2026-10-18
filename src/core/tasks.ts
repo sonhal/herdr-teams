@@ -1,0 +1,71 @@
+import { Hooks } from './hooks.js';
+import { planApproval } from './plans.js';
+import { Store, type Task } from './store.js';
+export class Tasks {
+  constructor(
+    readonly db: Store,
+    readonly env: NodeJS.ProcessEnv,
+  ) {}
+  async add(
+    actor: string,
+    subject: string,
+    options: {
+      description?: string;
+      gate?: string;
+      planMode?: boolean;
+      worktree?: boolean;
+    } = {},
+  ) {
+    const hooks = new Hooks(this.db, this.env);
+    const outcome = await hooks.run('task_created', actor, undefined, {
+      subject,
+      ...options,
+    });
+    if (outcome.code !== 0)
+      throw new Error(outcome.stderr || 'Task rejected by hook');
+    const task = this.db.add(subject, options.description);
+    return this.db.editTask(task.id, (t) => {
+      if (options.gate) t.gate = options.gate;
+      if (options.planMode) t.plan_mode = true;
+      if (options.worktree) t.worktree = { required: true };
+    });
+  }
+  complete(id: string, actor: string, result?: string): Promise<Task> {
+    return this.db.exclusive(`task-${id}`, async () => {
+      const task = this.db.task(id);
+      if (task.owner !== actor || task.status !== 'in_progress')
+        throw new Error('Only the owner may complete an in-progress task');
+      if (
+        (task.plan_mode || this.db.config().details?.[actor]?.plan_mode) &&
+        planApproval(this.db, task) === 'lead' &&
+        task.plan?.verdict !== 'approved'
+      )
+        throw new Error(
+          'Submit a plan and wait for approval before completion',
+        );
+      const hooks = new Hooks(this.db, this.env);
+      let outcome = task.gate
+        ? await hooks.execute(
+            '/bin/sh',
+            ['-c', task.gate],
+            'task_completed',
+            actor,
+            task,
+          )
+        : { code: 0, stderr: '' };
+      if (outcome.code === 0)
+        outcome = await hooks.run('task_completed', actor, task, {
+          ...task,
+          status: 'completed',
+          result,
+        });
+      if (outcome.code !== 0) {
+        hooks.failure(actor, task, outcome);
+        throw new Error(
+          outcome.stderr || `Completion rejected (exit ${outcome.code})`,
+        );
+      }
+      return this.db.change(id, 'complete', actor, result, undefined, task);
+    });
+  }
+}

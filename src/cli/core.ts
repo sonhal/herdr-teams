@@ -1,3 +1,4 @@
+import { Tasks } from '../core/tasks.js';
 import { Command } from 'commander';
 import { HerdrClient } from '../herdr/index.js';
 import { Worktrees, worktreeStatus } from '../core/worktrees.js';
@@ -61,18 +62,12 @@ export function installCoreCommands(
   tasks.description('Manage persistent tasks and dependencies');
   const add = replace(tasks, 'add', 'add <subject>')
     .option('--description <text>', 'task description')
-    .option('--worktree', 'require a dedicated worktree');
-  add.action((subject: string) => {
-    const { db } = store(add);
-    const task = db.add(
-      subject,
-      add.opts<{ description?: string }>().description,
-    );
-    if (add.opts<{ worktree?: boolean }>().worktree)
-      db.editTask(task.id, (t) => {
-        t.worktree = { required: true };
-      });
-    print(db.task(task.id));
+    .option('--worktree', 'require a dedicated worktree')
+    .option('--gate <command>', 'completion gate')
+    .option('--plan-mode', 'require a plan');
+  add.action(async (subject: string) => {
+    const { db, actor } = store(add);
+    print(await new Tasks(db, env).add(actor, subject, add.opts()));
   });
   const taskList = replace(tasks, 'list', 'list');
   taskList.action(() => print(store(taskList).db.tasks()));
@@ -106,15 +101,25 @@ export function installCoreCommands(
         subject?: string;
         description?: string;
       }>();
+      if (action === 'complete')
+        return new Tasks(db, env)
+          .complete(id, actor, flags.result)
+          .then((completed) => {
+            if (completed.worktree?.binding)
+              db.send(
+                actor,
+                db.config().lead,
+                `Task #${id} completed: ${JSON.stringify(worktreeStatus(completed.worktree.binding))}`,
+                false,
+                'report',
+              );
+            print(completed);
+          });
       const changed = db.change(
         id,
         action,
         actor,
-        action === 'assign'
-          ? String(owner)
-          : action === 'complete'
-            ? flags.result
-            : flags.subject,
+        action === 'assign' ? String(owner) : flags.subject,
         flags.description,
       );
       if (
@@ -130,14 +135,6 @@ export function installCoreCommands(
             throw error;
           });
       }
-      if (action === 'complete' && changed.worktree?.binding)
-        db.send(
-          actor,
-          db.config().lead,
-          `Task #${id} completed: ${JSON.stringify(worktreeStatus(changed.worktree.binding))}`,
-          false,
-          'report',
-        );
       print(db.task(id));
     });
   }

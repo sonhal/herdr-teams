@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Store } from '../src/core/store.js';
-import { runCli } from '../src/cli/index.js';
+import { runCliAsync } from '../src/cli/index.js';
 const homes: string[] = [];
 function fixture() {
   const home = mkdtempSync(join(tmpdir(), 'teams-'));
@@ -54,7 +54,7 @@ describe('M1 store', () => {
       'message.sent',
     );
   });
-  it('wires real CLI commands and reports actionable errors', () => {
+  it('wires real CLI commands and reports actionable errors', async () => {
     const { home } = fixture();
     let stdout = '';
     let stderr = '';
@@ -68,12 +68,14 @@ describe('M1 store', () => {
         stderr += text;
       },
     };
-    expect(runCli(['task', 'add', 'hello', '--json'], options)).toBe(0);
+    expect(await runCliAsync(['task', 'add', 'hello', '--json'], options)).toBe(
+      0,
+    );
     expect(JSON.parse(stdout)).toMatchObject({
       subject: 'hello',
       status: 'pending',
     });
-    expect(runCli(['task', 'claim', '999'], options)).toBe(1);
+    expect(await runCliAsync(['task', 'claim', '999'], options)).toBe(1);
     expect(stderr).toContain('error:');
   });
   it('recovers an abandoned lock after the stale timeout', () => {

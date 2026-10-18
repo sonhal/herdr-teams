@@ -21,7 +21,7 @@ export async function supervise(
         .then(async () => {
           if (signal.aborted) return;
           applyEvent(db, event);
-          await reconcile(db, client);
+          await reconcile(db, client, env);
           if (tick) await checkAdvisories(db, client);
           const members = Object.values(db.config().details ?? {});
           output(

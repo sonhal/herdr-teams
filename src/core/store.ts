@@ -18,6 +18,13 @@ export interface Team {
   members: string[];
   auto_claim?: boolean;
   repository_dir?: string;
+  plan_approval?: 'lead' | 'none';
+  hooks?: {
+    failure_action?: 'warn' | 'reopen' | 'followup' | 'reopen_followup';
+    max_reopens?: number;
+    followup_owner?: 'member' | 'lead' | 'none';
+    timeout_seconds?: number;
+  };
   worktree_requests?: 'lead' | 'auto';
   requests?: Record<
     string,
@@ -57,6 +64,7 @@ export interface Member {
   workspace_id?: string;
   tab_id?: string;
   plan_mode?: boolean;
+  plan_approval?: 'lead' | 'none';
   state: string;
   state_since?: number;
   progress_at?: number;
@@ -87,6 +95,15 @@ export interface Task {
   status:
     'pending' | 'planning' | 'in_progress' | 'completed' | 'failed' | 'deleted';
   owner: string | null;
+  gate?: string;
+  plan_mode?: boolean;
+  plan_approval?: 'lead' | 'none';
+  plan?: {
+    version: number;
+    path: string;
+    verdict: 'pending' | 'approved' | 'rejected';
+    feedback: string | null;
+  };
   worktree?: { required?: boolean; binding?: Worktree };
   blockedBy: string[];
   blocks: string[];
@@ -369,9 +386,12 @@ export class Store {
     actor: string,
     value?: string,
     description?: string,
+    expected?: Task,
   ): Task {
     return this.lock(() => {
       const task = this.task(id);
+      if (expected && JSON.stringify(expected) !== JSON.stringify(task))
+        throw new Error('Task changed while the hook was running; retry');
       if (action === 'claim' || action === 'assign') {
         if (
           task.status !== 'pending' ||
@@ -531,6 +551,7 @@ export class Store {
 export interface DeliveryState {
   blocked?: Record<string, boolean>;
   acknowledged?: Record<string, string[]>;
+  idle_hooks?: Record<string, number>;
   cursors: Record<string, string>;
   reports: Record<string, number>;
 }

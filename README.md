@@ -135,3 +135,27 @@ requires no running agent, a clean checkout and a branch merged into the lead's
 HEAD. `--preserve` commits dirty files first, `--force-unmerged` keeps an unmerged
 branch, and `--delete-branch` explicitly removes the branch. `cleanup` lists
 ended members' worktrees; `cleanup --apply` removes only eligible ones.
+
+## Plans and quality gates
+
+```sh
+herdr-teams --team demo task add "Implement login" --plan-mode --gate "npm test"
+herdr-teams --team demo plan submit 1 --file plan.md
+herdr-teams --team demo plan approve 1
+herdr-teams --team demo plan reject 1 --feedback "Add failure tests"
+```
+
+The active owner submits a versioned plan; only the lead or user approves or
+rejects it. `plan_approval: none` lets the owner continue after submitting.
+Late verdicts are recorded without reopening terminal tasks.
+
+Executable hooks in `.herdr/teams/hooks/` override global hooks in
+`~/.config/herdr-teams/hooks/`. Names are `task_created`, `task_completed`,
+`plan_submitted` and `teammate_idle`. They receive JSON on stdin and team,
+member and task identity in `HERDR_TEAMS_*` variables. Completion gates run
+first, in the task's worktree. Exit 2 rejects an action with feedback; other
+failures retain the open task and apply `hooks.failure_action` (`warn`,
+`reopen`, `followup` or `reopen_followup`). `max_reopens` defaults to 3 and
+`followup_owner` to `member`. Hook timeouts default to 600 seconds.
+Existing `.pi/team-hooks/task_completed.sh` hooks also run with JSON as their
+first argument and `PI_TEAM` set.
