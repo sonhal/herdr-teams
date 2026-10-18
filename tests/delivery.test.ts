@@ -299,7 +299,7 @@ it('startup hooks skip teams that belong to another herdr session', async () => 
   }
 });
 
-it('does not deliver lead mail to another named agent in the lead pane', async () => {
+it('delivers lead mail to whichever agent runs in the lead pane', async () => {
   const db = team(
     mkdtempSync(join(tmpdir(), 'delivery-')),
     'demo',
@@ -307,14 +307,18 @@ it('does not deliver lead mail to another named agent in the lead pane', async (
   );
   homes.push(db.home);
   db.addMember('alice');
-  db.send('alice', 'lead', 'for the lead only');
+  db.send('alice', 'lead', 'for the lead');
+  const lead = { ...idle, name: 'renamed-by-user' };
   const fake = await fakeHerdr([
-    jsonReply({ type: 'agent_list', agents: [{ ...idle, name: 'stranger' }] }),
+    jsonReply({ type: 'agent_list', agents: [lead] }),
+    jsonReply({ type: 'agent_info', agent: lead }),
+    jsonReply({ type: 'agent_prompted', agent: lead }),
   ]);
   try {
     await reconcile(db, new HerdrClient({ env: fake.env }));
-    expect((await fake.calls()).some((c) => c[1] === 'prompt')).toBe(false);
-    expect(db.deliveryState().cursors).toEqual({});
+    const prompts = (await fake.calls()).filter((c) => c[1] === 'prompt');
+    expect(prompts.map((c) => c[2])).toEqual([idle.pane_id]);
+    expect(db.deliveryState().cursors.lead).toBeDefined();
   } finally {
     await fake.cleanup();
   }

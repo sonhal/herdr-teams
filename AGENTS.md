@@ -37,7 +37,8 @@
 - Team isolation: a command, hook or supervisor tick reads and writes only
   the team it was invoked for. The state home is shared by every team and
   every herdr session; pane IDs and agent names are not unique across them.
-  Match a member on agent name and pane, never pane alone.
+  Match a teammate on agent name and pane, never pane alone. The lead is
+  whatever agent runs in the lead pane of the team's own herdr session.
 - Authority is per effect, not per command. A command that leads to an
   interrupt, a key press, a pane close or a task release requires the same
   authority as the direct command, even when the effect happens later.
