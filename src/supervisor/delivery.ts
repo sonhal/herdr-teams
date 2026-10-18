@@ -33,20 +33,22 @@ function batch(team: string, pending: Message[]): Message[] {
   return fitting;
 }
 
-/** Members match on agent name and pane: pane IDs are reused after restarts. */
+/**
+ * Teammates match on agent name and pane: pane IDs are reused after restarts.
+ * Whatever agent runs in the lead pane is the lead, as it is for CLI authority.
+ */
 export function liveMember(
   team: Team,
   member: string,
   agents: AgentInfo[],
 ): AgentInfo | undefined {
-  const pane =
-    member === team.lead ? team.lead_pane_id : team.details?.[member]?.pane_id;
+  if (member === team.lead)
+    return team.lead_pane_id
+      ? agents.find((a) => a.pane_id === team.lead_pane_id)
+      : agents.find((a) => a.name === member);
+  const pane = team.details?.[member]?.pane_id;
   return agents.find(
-    (a) =>
-      (pane === undefined || a.pane_id === pane) &&
-      // The lead runs in a pane the user opened, which herdr may leave unnamed.
-      (a.name === member ||
-        (member === team.lead && pane !== undefined && a.name === undefined)),
+    (a) => a.name === member && (pane === undefined || a.pane_id === pane),
   );
 }
 
