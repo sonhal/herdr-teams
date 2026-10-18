@@ -11,6 +11,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import type { AgentInfo } from '../herdr/index.js';
 
 export interface Team {
   name: string;
@@ -121,7 +122,7 @@ export interface Member {
   launch_pid?: number;
   started_at?: number;
   last_output?: string;
-  session?: unknown;
+  session?: AgentInfo['agent_session'];
 }
 export interface Task {
   id: string;
@@ -325,10 +326,13 @@ export class Store {
         (t.status === 'in_progress' || t.status === 'planning'),
     ))
       this.change(task.id, 'release', this.config().lead);
+    const session = this.config().details?.[member]?.session;
     this.send(
       member,
       this.config().lead,
-      `${member}: ${ended}\n${output}`,
+      [`${member}: ${ended}`, session && `Session: ${session.value}`, output]
+        .filter(Boolean)
+        .join('\n'),
       false,
       'advisory',
     );

@@ -115,11 +115,7 @@ it('waits for idle before exit, confirms disappearance, then closes and releases
   });
   const task = db.add('work');
   db.change(task.id, 'claim', 'alice');
-  const fake = await fakeHerdr([
-    prompted,
-    { stdout: 'finished' },
-    jsonReply({ type: 'ok' }),
-  ]);
+  const fake = await fakeHerdr([prompted, jsonReply({ type: 'ok' })]);
   try {
     const client = new HerdrClient({ env: fake.env });
     const lifecycle = new Lifecycle(db, client, fake.env);
@@ -142,6 +138,59 @@ it('waits for idle before exit, confirms disappearance, then closes and releases
     expect(
       db.inbox('lead').filter((m) => m.body.includes('shut-down')),
     ).toHaveLength(1);
+  } finally {
+    await fake.cleanup();
+  }
+});
+it('reports a shutdown with the member and its session, not its screen', async () => {
+  const db = setup();
+  db.reserveMember('alice', {
+    kind: 'codex',
+    pane_id: pane.pane_id,
+    state: 'idle',
+    session: agent.agent_session,
+  });
+  const fake = await fakeHerdr([prompted, jsonReply({ type: 'ok' })]);
+  try {
+    const client = new HerdrClient({ env: fake.env });
+    const lifecycle = new Lifecycle(db, client, fake.env);
+    lifecycle.requestShutdown('alice');
+    lifecycle.acceptShutdown('alice');
+    await syncMembers(db, client, [agent]);
+    await syncMembers(db, client, []);
+    expect((await fake.calls()).map((c) => c.slice(0, 2))).toEqual([
+      ['agent', 'prompt'],
+      ['pane', 'close'],
+    ]);
+    const notices = db.inbox('lead').filter((m) => m.kind === 'advisory');
+    expect(notices.map((m) => m.body)).toEqual([
+      'alice: shut-down\nSession: session-1',
+    ]);
+  } finally {
+    await fake.cleanup();
+  }
+});
+it('reports a crash with its screen and the session the member last ran', async () => {
+  const db = setup();
+  db.reserveMember('alice', {
+    kind: 'codex',
+    pane_id: pane.pane_id,
+    state: 'idle',
+    session: agent.agent_session,
+  });
+  const fake = await fakeHerdr([{ stdout: 'panic: boom' }]);
+  try {
+    const client = new HerdrClient({ env: fake.env });
+    await syncMembers(db, client, [
+      {
+        ...agent,
+        agent_session: { ...agent.agent_session!, value: 'session-2' },
+      },
+    ]);
+    await syncMembers(db, client, []);
+    expect(db.inbox('lead').map((m) => m.body)).toEqual([
+      'alice: crashed\nSession: session-2\npanic: boom',
+    ]);
   } finally {
     await fake.cleanup();
   }
