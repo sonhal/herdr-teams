@@ -86,12 +86,11 @@ it('launches Codex with isolated identity, model, effort and attributed bootstra
     await fake.cleanup();
   }
 });
-it('retains launch failures and gives the lead arguments and captured output', async () => {
+it('retains launch failures and gives the lead arguments and error, not the screen', async () => {
   const db = setup();
   const fake = await fakeHerdr([
     location,
     { exitCode: 3, stderr: 'bad model' },
-    { stdout: 'launch output' },
   ]);
   try {
     const lifecycle = new Lifecycle(
@@ -103,8 +102,13 @@ it('retains launch failures and gives the lead arguments and captured output', a
       lifecycle.spawn('alice', { kind: 'codex', prompt: 'test', model: 'bad' }),
     ).rejects.toThrow();
     expect(db.config().details!.alice!.ended).toBe('failed-to-launch');
-    expect(db.inbox('lead')[0]!.body).toContain('launch output');
-    expect((await fake.calls()).some((c) => c[1] === 'close')).toBe(false);
+    const body = db.inbox('lead')[0]!.body;
+    expect(body).toContain('Arguments: ');
+    expect(body).toContain('bad model');
+    expect(body).toContain('Peek: herdr-teams peek alice');
+    const calls = await fake.calls();
+    expect(calls.some((c) => c[1] === 'read')).toBe(false);
+    expect(calls.some((c) => c[1] === 'close')).toBe(false);
   } finally {
     await fake.cleanup();
   }
