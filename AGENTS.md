@@ -53,6 +53,11 @@
   options for unbuilt features are rejected, not ignored. Prompts sent to
   agents name only working commands.
 
+## Testing
+
+- Features needs to be tested against an actually running herdr instance
+  before it can be trusted to work.
+
 ## Writing style
 
 Applies to code comments, docs, README, plans, commit messages and PR bodies.
