@@ -13,6 +13,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "lint": "eslint . && prettier --check .",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",

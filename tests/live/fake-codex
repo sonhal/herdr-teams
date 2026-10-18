@@ -1,0 +1,12 @@
+#!/bin/sh
+# Stand-in for the codex CLI in live tests. herdr identifies it by argv0 and
+# the terminal title: a braille spinner means working, any other title means
+# idle. It echoes each input line. It does not model codex's UI or prompts.
+printf '\033]0;codex\007'
+printf '› '
+while IFS= read -r line; do
+  printf '\033]0;⠋ codex\007'
+  sleep 0.5
+  printf '• echo: %s\n› ' "$line"
+  printf '\033]0;codex\007'
+done
