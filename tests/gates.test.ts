@@ -8,6 +8,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it } from 'vitest';
 import { Store } from '../src/core/store.js';
 import { Tasks } from '../src/core/tasks.js';
@@ -20,8 +21,8 @@ afterEach(() =>
 function setup() {
   const home = mkdtempSync(join(tmpdir(), 'gates-'));
   homes.push(home);
-  const db = new Store(join(home, 'state'), 'demo');
-  db.create('lead');
+  const db = new Store(join(home, 'state'), randomUUID());
+  db.create('lead', 'demo');
   db.addMember('alice');
   db.updateTeam((t) => {
     t.repository_dir = home;
@@ -119,7 +120,7 @@ it('passes stdin and identity and preserves the original pi hook argument', asyn
   expect(
     JSON.parse(readFileSync(join(home, 'pi-payload.json'), 'utf8')),
   ).toMatchObject({ status: 'completed', id: task.id });
-  expect(readFileSync(join(home, 'pi-team'), 'utf8')).toBe('demo');
+  expect(readFileSync(join(home, 'pi-team'), 'utf8')).toBe(db.id);
 });
 it('caps reopen attempts and creates assigned follow-up tasks on hook failures', async () => {
   const { db, tasks } = setup();

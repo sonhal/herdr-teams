@@ -82,13 +82,19 @@ export function runCli(argv: string[], options: CliOptions): number {
 function targetTeam(program: Command, env: NodeJS.ProcessEnv) {
   const team = program.commands.find((c) => c.name() === 'team')!;
   const flags = program.opts<{ team?: string }>();
-  if (program.args[0] === 'team' && program.args[1] === 'create')
-    return team.commands.find((c) => c.name() === 'create')!.args[0];
+  if (program.args[0] === 'team' && program.args[1] === 'create') {
+    const create = team.commands.find((c) => c.name() === 'create')!;
+    const stored = (create as Command & { _storeId?: string })._storeId;
+    if (stored) return stored;
+    return create.args[0];
+  }
   if (program.args[0] === 'team' && program.args[1] === 'start') {
     const start = team.commands.find((c) => c.name() === 'start')!;
+    const stored = (start as Command & { _storeId?: string })._storeId;
+    if (stored) return stored;
     return start.opts<{ name?: string }>().name ?? flags.team ?? start.args[0];
   }
-  return readIdentity(env, flags.team).team;
+  return readIdentity(env, flags.team).teamId;
 }
 
 /** Production entrypoint: keep command errors distinct from deferred delivery. */
@@ -133,13 +139,13 @@ export async function runCliAsync(
             team.herdr_socket !== undefined &&
             team.herdr_socket === env.HERDR_SOCKET_PATH,
         )
-        .map((team) => team.name)
+        .map((team) => team.id)
     : [targetTeam(program, env)].filter((team) => team !== undefined);
   const client = new HerdrClient({ env });
   let failed = false;
-  for (const name of teams) {
+  for (const id of teams) {
     try {
-      const db = new Store(identity.home, name);
+      const db = new Store(identity.home, id);
       const team = db.config();
       if (
         team.herdr_socket !== undefined &&
@@ -183,7 +189,7 @@ export async function runCliAsync(
     } catch (error) {
       failed = true;
       (options.stderr ?? ((text: string) => process.stderr.write(text)))(
-        `delivery deferred for ${name}: ${error instanceof Error ? error.message : String(error)}\n`,
+        `delivery deferred for ${id}: ${error instanceof Error ? error.message : String(error)}\n`,
       );
     }
   }

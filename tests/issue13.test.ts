@@ -9,6 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
 import { afterEach, expect, it } from 'vitest';
 import { Store } from '../src/core/store.js';
@@ -29,8 +30,8 @@ afterEach(() =>
 function setup() {
   const home = mkdtempSync(join(tmpdir(), 'issue13-'));
   homes.push(home);
-  const db = new Store(home, 'demo');
-  db.create('lead');
+  const db = new Store(home, randomUUID());
+  db.create('lead', 'demo');
   db.updateTeam((t) => {
     t.supervisor = { mode: 'off' };
   });

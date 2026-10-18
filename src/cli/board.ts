@@ -26,9 +26,9 @@ export function installBoardCommands(
       env,
       command.optsWithGlobals<{ team?: string }>().team,
     );
-    if (!identity.home || !identity.team)
+    if (!identity.home || !identity.teamId)
       throw new Error('Set HERDR_TEAMS_HOME and select a team');
-    const db = new Store(identity.home, identity.team);
+    const db = new Store(identity.home, identity.teamId);
     db.authorize(identity.agent);
     return db;
   }
@@ -144,11 +144,11 @@ export function installBoardCommands(
       (t) =>
         !env.HERDR_WORKSPACE_ID || t.workspace_id === env.HERDR_WORKSPACE_ID,
     );
-    const name =
-      identity.team ??
-      (candidates.length === 1 ? candidates[0]!.name : undefined);
-    if (!name) throw new Error('Select a team with --team');
-    new Store(identity.home, name).authorize(identity.agent);
+    const id =
+      identity.teamId ??
+      (candidates.length === 1 ? candidates[0]!.id : undefined);
+    if (!id) throw new Error('Select a team with --team');
+    new Store(identity.home, id).authorize(identity.agent);
     await new HerdrClient({ env }).command(
       [
         'plugin',
@@ -164,7 +164,7 @@ export function installBoardCommands(
         '--env',
         `HERDR_TEAMS_HOME=${identity.home}`,
         '--env',
-        `HERDR_TEAMS_TEAM=${name}`,
+        `HERDR_TEAMS_TEAM=${id}`,
       ],
       'plugin_pane_opened',
     );

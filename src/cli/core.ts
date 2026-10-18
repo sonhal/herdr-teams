@@ -1,5 +1,6 @@
 import { Tasks } from '../core/tasks.js';
 import { Command } from 'commander';
+import { randomUUID } from 'node:crypto';
 import { HerdrClient } from '../herdr/index.js';
 import { Worktrees, worktreeStatus } from '../core/worktrees.js';
 import { Store } from '../core/store.js';
@@ -29,9 +30,9 @@ export function installCoreCommands(
   }
   function store(command: Command, privileged = false) {
     const { identity, home } = context(command);
-    if (!identity.team)
+    if (!identity.teamId)
       throw new Error('Select a team with --team or HERDR_TEAMS_TEAM');
-    const db = new Store(home, identity.team);
+    const db = new Store(home, identity.teamId);
     const actor = db.authorize(identity.agent, privileged);
     return { db, actor };
   }
@@ -51,11 +52,13 @@ export function installCoreCommands(
       warn(
         `warning: herdr's startup and event hooks read ${hooks}, not ${home}; this team relies on its supervisor\n`,
       );
-    const db = new Store(home, name);
+    const db = new Store(home, randomUUID());
     db.create(
       create.opts<{ lead?: string }>().lead ?? identity.agent ?? 'lead',
+      name,
     );
     db.bindSession(env.HERDR_SOCKET_PATH);
+    (create as Command & { _storeId?: string })._storeId = db.id;
     print(
       db.updateTeam((team) => {
         if (env.HERDR_PANE_ID) team.lead_pane_id = env.HERDR_PANE_ID;

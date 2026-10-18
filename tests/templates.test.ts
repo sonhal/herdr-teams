@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it } from 'vitest';
 import { runCliAsync } from '../src/cli/index.js';
 import { Config } from '../src/core/config.js';
@@ -66,8 +67,8 @@ it('lets project templates and roles replace built-in ones', () => {
 function team() {
   const home = mkdtempSync(join(tmpdir(), 'builtin-'));
   homes.push(home);
-  const db = new Store(home, 'demo');
-  db.create('lead');
+  const db = new Store(home, randomUUID());
+  db.create('lead', 'demo');
   return db;
 }
 

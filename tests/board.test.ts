@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it } from 'vitest';
 import { Store } from '../src/core/store.js';
 import { snapshot, renderBoard } from '../src/board/model.js';
@@ -16,8 +17,8 @@ afterEach(() =>
 function setup() {
   const home = mkdtempSync(join(tmpdir(), 'board-'));
   homes.push(home);
-  const db = new Store(home, 'demo');
-  db.create('lead');
+  const db = new Store(home, randomUUID());
+  db.create('lead', 'demo');
   db.reserveMember('alice', {
     kind: 'codex',
     state: 'idle',

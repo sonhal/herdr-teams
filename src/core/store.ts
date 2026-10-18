@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import type { AgentInfo } from '../herdr/index.js';
 
 export interface Team {
+  id: string;
   name: string;
   lead: string;
   members: string[];
@@ -190,9 +191,17 @@ export class Store {
   readonly root: string;
   constructor(
     readonly home: string,
-    readonly team: string,
+    readonly id: string,
   ) {
-    this.root = join(home, 'teams', name(team));
+    this.root = join(home, 'teams', id);
+  }
+  /** Historical alias for {@link id}; many callers read db.team. */
+  get team(): string {
+    return this.id;
+  }
+  /** Display name from config.json. */
+  get name(): string {
+    return this.config().name;
   }
   private lock<T>(operation: () => T): T {
     const lock = join(this.root, 'locks', 'store');
@@ -361,15 +370,17 @@ export class Store {
       return config;
     });
   }
-  create(lead: string): Team {
+  create(lead: string, displayName: string): Team {
     name(lead);
+    name(displayName);
     mkdirSync(join(this.home, 'teams'), { recursive: true });
     mkdirSync(this.root);
     try {
       for (const dir of ['tasks', 'inboxes', 'plans', 'locks'])
         mkdirSync(join(this.root, dir));
       const team = {
-        name: this.team,
+        id: this.id,
+        name: displayName,
         lead,
         members: [lead],
         createdAt: new Date().toISOString(),
@@ -399,8 +410,9 @@ export class Store {
     return readdirSync(root)
       .filter(
         (n) =>
-          /^[a-z][a-z0-9_-]{0,31}$/.test(n) &&
-          existsSync(join(root, n, 'config.json')),
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+            n,
+          ) && existsSync(join(root, n, 'config.json')),
       )
       .sort()
       .map((n) => new Store(home, n).config());

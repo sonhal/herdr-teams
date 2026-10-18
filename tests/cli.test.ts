@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { Store } from '../src/core/store.js';
 import { describe, expect, it } from 'vitest';
 import { createCli, runCli } from '../src/cli/index.js';
@@ -62,14 +63,18 @@ describe('CLI', () => {
     ['task', 'list', '--team', 'override', '--json'],
   ])('accepts global flags at every command depth: %j', (...argv) => {
     const home = mkdtempSync(join(tmpdir(), 'cli-'));
-    const db = new Store(home, 'override');
-    db.create('lead');
+    const id = randomUUID();
+    const db = new Store(home, id);
+    db.create('lead', 'override');
     db.add('flag test');
     try {
-      const result = run(argv, {
-        HERDR_TEAMS_HOME: home,
-        HERDR_TEAMS_TEAM: 'default',
-      });
+      const result = run(
+        argv.map((a) => (a === 'override' ? id : a)),
+        {
+          HERDR_TEAMS_HOME: home,
+          HERDR_TEAMS_TEAM: 'default',
+        },
+      );
       expect(result.exitCode).toBe(0);
       expect(JSON.parse(result.stdout)).toMatchObject([
         { subject: 'flag test' },
@@ -105,7 +110,7 @@ describe('identity (PLAN §4.2–4.3)', () => {
       }),
     ).toEqual({
       home: '/fallback',
-      team: 'auth',
+      teamId: 'auth',
       agent: 'alice',
       paneId: 'w1:p2',
     });
@@ -122,7 +127,7 @@ describe('identity (PLAN §4.2–4.3)', () => {
       ),
     ).toEqual({
       home: '/explicit',
-      team: 'override',
+      teamId: 'override',
       agent: undefined,
       paneId: undefined,
     });
@@ -139,7 +144,7 @@ describe('identity (PLAN §4.2–4.3)', () => {
   it('does not invent an identity outside a herdr pane', () => {
     expect(readIdentity({})).toEqual({
       home: undefined,
-      team: undefined,
+      teamId: undefined,
       agent: undefined,
       paneId: undefined,
     });

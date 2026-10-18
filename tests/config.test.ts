@@ -7,6 +7,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it } from 'vitest';
 import { Config } from '../src/core/config.js';
 import { Lifecycle } from '../src/core/lifecycle.js';
@@ -57,8 +58,8 @@ it('resolves project definitions before compatibility and global definitions', (
 });
 it('saves and restarts a team with equivalent roles, defaults and seed tasks', async () => {
   const { home, env, config } = setup();
-  const original = new Store(join(home, 'state'), 'original');
-  original.create('lead');
+  const original = new Store(join(home, 'state'), randomUUID());
+  original.create('lead', 'original');
   original.reserveMember('alice', {
     kind: 'codex',
     state: 'idle',
@@ -85,11 +86,11 @@ it('saves and restarts a team with equivalent roles, defaults and seed tasks', a
     jsonReply({ type: 'agent_prompted', agent }),
     jsonReply({
       type: 'agent_info',
-      agent: { ...agent, name: 'restored-alice' },
+      agent: { ...agent, name: 'saved-alice' },
     }),
   ]);
   try {
-    const restored = new Store(join(home, 'state'), 'restored');
+    const restored = new Store(join(home, 'state'), randomUUID());
     await config.start(
       restored,
       new Lifecycle(restored, new HerdrClient({ env: fake.env }), env),
@@ -126,7 +127,7 @@ it('rejects invalid settings before creating a team or invoking herdr', async ()
     join(home, '.herdr', 'teams.yaml'),
     'bad:\n  supervisor: {mode: pane, tick_seconds: 0}\n  members: [{name: alice, kind: codex}]\n',
   );
-  const db = new Store(join(home, 'state'), 'bad');
+  const db = new Store(join(home, 'state'), randomUUID());
   const fake = await fakeHerdr([]);
   try {
     await expect(
@@ -147,9 +148,9 @@ it('rejects a member whose herdr name would be too long before creating a team',
   const { home, env, config } = setup();
   writeFileSync(
     join(home, '.herdr', 'teams.yaml'),
-    `long:\n  members: [{name: ${'b'.repeat(12)}, kind: codex}]\n`,
+    `long:\n  members: [{name: ${'b'.repeat(28)}, kind: codex}]\n`,
   );
-  const db = new Store(join(home, 'state'), 'a'.repeat(20));
+  const db = new Store(join(home, 'state'), randomUUID());
   const fake = await fakeHerdr([]);
   try {
     await expect(
