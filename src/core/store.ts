@@ -404,7 +404,42 @@ export class Store {
       throw new Error('Only the lead or user may perform this action');
     return actor ?? config.lead;
   }
+  /**
+   * A pane leads at most one active team in a herdr session, so its label and
+   * lead authority have one owner. A team is active while a teammate runs;
+   * teams are never deleted, so an idle team gives up its lead pane.
+   */
+  static checkLeadPane(
+    home: string,
+    socket: string | undefined,
+    pane: string | undefined,
+    except?: string,
+  ): void {
+    if (!socket || !pane) return;
+    const other = Store.teamIds(home)
+      .filter((id) => id !== except)
+      .map((id) => {
+        try {
+          return new Store(home, id).config();
+        } catch {
+          return undefined; // An unreadable team must not block this one.
+        }
+      })
+      .find(
+        (team) =>
+          team?.herdr_socket === socket &&
+          team.lead_pane_id === pane &&
+          Object.values(team.details ?? {}).some((member) => !member.ended),
+      );
+    if (other)
+      throw new Error(
+        `This pane already leads team ${other.name} (${other.id}); end its teammates with done first`,
+      );
+  }
   static teams(home: string): Team[] {
+    return Store.teamIds(home).map((id) => new Store(home, id).config());
+  }
+  private static teamIds(home: string): string[] {
     const root = join(home, 'teams');
     if (!existsSync(root)) return [];
     return readdirSync(root)
@@ -414,8 +449,7 @@ export class Store {
             n,
           ) && existsSync(join(root, n, 'config.json')),
       )
-      .sort()
-      .map((n) => new Store(home, n).config());
+      .sort();
   }
   tasks(): Task[] {
     return readdirSync(join(this.root, 'tasks'))

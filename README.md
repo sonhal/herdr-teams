@@ -98,10 +98,15 @@ herdr-teams --team demo shutdown alice
 Inside herdr, team state defaults to herdr's plugin state directory, the one
 its startup and event hooks read; leave `HERDR_TEAMS_HOME` unset there. A team
 belongs to the herdr session it was created in: commands and hooks from other
-sessions leave it alone. Members receive team identity and the CLI on PATH. Splits put the first
+sessions leave it alone. A pane leads at most one active team in a session:
+`team create`, `team start` and `spawn` refuse while another team led from that
+pane has running teammates. Members receive team identity and the CLI on PATH. Splits put the first
 four teammates beside the lead in its tab, then in team tabs of four;
 `--placement tab|workspace` gives a member its own
-location. All panes open without taking focus. `--model` and `--thinking`
+location. All panes open without taking focus. Each member's pane, and the
+lead's while teammates run, reports the member name as its agent label; set
+`show_agent_labels_on_pane_borders = true` under `[ui]` in herdr's config to
+show it on split pane borders. `--model` and `--thinking`
 override team defaults. Teammates share the lead's checkout; `--worktree dedicated` gives one an isolated checkout.
 In herdr, a new teammate's agent name includes a four-character suffix derived
 from its instance ID and member name. The readable `<team>-<member>` prefix is

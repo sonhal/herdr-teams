@@ -583,3 +583,86 @@ describe('herdr agent names', () => {
     expect(first).not.toBe(second);
   });
 });
+
+describe('one active team per lead pane', () => {
+  function team(home: string, socket: string, running: boolean) {
+    const db = new Store(home, randomUUID());
+    db.create('lead', 'first');
+    db.bindSession(socket);
+    db.updateTeam((t) => {
+      t.lead_pane_id = 'w1:p1';
+    });
+    db.reserveMember('bob', {
+      kind: 'codex',
+      state: 'idle',
+      pane_id: 'w1:p5',
+      ...(running ? {} : { ended: 'shut-down' as const }),
+    });
+    return db;
+  }
+  async function create(home: string, socket: string) {
+    let stderr = '';
+    const code = await runCliAsync(['team', 'create', 'second'], {
+      version: '0.1.0',
+      env: {
+        HERDR_BIN_PATH: '/nonexistent/herdr',
+        HERDR_TEAMS_HOME: home,
+        HERDR_SOCKET_PATH: socket,
+        HERDR_PANE_ID: 'w1:p1',
+      },
+      stdout: () => {},
+      stderr: (s) => {
+        stderr += s;
+      },
+    });
+    return { code, stderr };
+  }
+  function home() {
+    const path = mkdtempSync(join(tmpdir(), 'lifecycle-'));
+    homes.push(path);
+    return path;
+  }
+
+  it('refuses a new team from a pane that leads an active team', async () => {
+    const path = home();
+    const first = team(path, 'session-a.sock', true);
+    const result = await create(path, 'session-a.sock');
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain(`already leads team first (${first.id})`);
+    expect(Store.teams(path)).toHaveLength(1);
+  });
+  it('lets the pane lead a new team once the old team is idle', async () => {
+    const path = home();
+    team(path, 'session-a.sock', false);
+    expect((await create(path, 'session-a.sock')).code).toBe(0);
+  });
+  it('skips an unreadable team when checking the lead pane', async () => {
+    const path = home();
+    const broken = team(path, 'session-a.sock', true);
+    writeFileSync(join(broken.root, 'config.json'), '{');
+    expect((await create(path, 'session-a.sock')).code).toBe(0);
+  });
+  it('ignores the same pane ID in another herdr session', async () => {
+    const path = home();
+    team(path, 'session-a.sock', true);
+    expect((await create(path, 'session-b.sock')).code).toBe(0);
+  });
+  it('refuses to spawn into an idle team whose lead pane leads an active one', async () => {
+    const path = home();
+    const idle = team(path, 'session-a.sock', false);
+    team(path, 'session-a.sock', true);
+    const fake = await fakeHerdr([]);
+    try {
+      await expect(
+        new Lifecycle(idle, new HerdrClient({ env: fake.env }), {
+          ...fake.env,
+          HERDR_SOCKET_PATH: 'session-a.sock',
+        }).spawn('alice', { kind: 'codex', prompt: 'test' }),
+      ).rejects.toThrow('already leads team first');
+      expect(await fake.calls()).toEqual([]);
+      expect(idle.config().details?.alice).toBeUndefined();
+    } finally {
+      await fake.cleanup();
+    }
+  });
+});

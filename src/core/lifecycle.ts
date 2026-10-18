@@ -58,6 +58,12 @@ export class Lifecycle {
   private async spawnMember(member: string, options: SpawnOptions) {
     this.db.bindSession(this.env.HERDR_SOCKET_PATH);
     const team = this.db.config();
+    Store.checkLeadPane(
+      this.db.home,
+      team.herdr_socket,
+      team.lead_pane_id,
+      team.id,
+    );
     options = {
       ...options,
       worktree: options.worktree ?? team.defaults?.worktree ?? 'shared',
