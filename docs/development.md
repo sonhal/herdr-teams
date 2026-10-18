@@ -6,6 +6,20 @@
 
 Requires Node.js ≥ 20 and npm.
 
+Install [git-secrets](https://github.com/awslabs/git-secrets#installing-git-secrets),
+then enable this checkout's commit check:
+
+```sh
+git config --local core.hooksPath .githooks
+```
+
+The hook finds git-secrets on `PATH` or in `.cache/bin/` for a local install.
+It scans the staged files with the patterns in `.git-secrets`, including
+common credential formats and developer home paths. It blocks commits if
+git-secrets is missing. Enable it in each clone; Git does not copy hook settings.
+If you already use a hook manager, call `.githooks/pre-commit` from it instead
+of replacing its `core.hooksPath`. Pattern checks cannot detect every secret.
+
 ```sh
 npm ci
 npm run build
