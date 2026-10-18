@@ -22,6 +22,29 @@ async function setup(replies: Reply[]) {
 }
 
 describe('herdr CLI contract', () => {
+  it('accepts the empty success output of quiet commands and still raises errors', async () => {
+    // herdr v0.9.5 src/cli.rs send_ok_request: nothing on success; the error
+    // envelope on stderr with exit 1 otherwise.
+    const { client } = await setup([
+      { stdout: '' },
+      {
+        exitCode: 1,
+        stderr: JSON.stringify({
+          id: 'cli:request',
+          error: { code: 'pane_not_found', message: 'pane not found' },
+        }),
+      },
+    ]);
+    const argv = [
+      'pane',
+      'report-metadata',
+      'w1:p2',
+      '--source',
+      'herdr-teams',
+    ];
+    await expect(client.quiet(argv)).resolves.toBeUndefined();
+    await expect(client.quiet(argv)).rejects.toBeInstanceOf(HerdrApiError);
+  });
   it('refuses an argument Linux would reject with E2BIG', async () => {
     const { fake, client } = await setup([]);
     await expect(

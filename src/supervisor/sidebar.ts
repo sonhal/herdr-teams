@@ -45,7 +45,7 @@ export async function syncSidebar(db: Store, client: HerdrClient) {
       ];
       const fingerprint = JSON.stringify(argv);
       cache[details.pane_id] = fingerprint;
-      if (previous[details.pane_id] !== fingerprint) await client.command(argv);
+      if (previous[details.pane_id] !== fingerprint) await client.quiet(argv);
     }
     if (team.workspace_id) {
       const summary = `${data.tasks.filter((t) => t.status === 'completed').length}/${data.tasks.length} done · ${data.members.filter((m) => m.advisory).length} advisories`;
@@ -60,7 +60,7 @@ export async function syncSidebar(db: Store, client: HerdrClient) {
       ];
       cache[team.workspace_id] = JSON.stringify(argv);
       if (previous[team.workspace_id] !== cache[team.workspace_id])
-        await client.command(argv);
+        await client.quiet(argv);
     }
     const temp = `${path}.${randomUUID()}.tmp`;
     try {

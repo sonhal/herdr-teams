@@ -167,7 +167,7 @@ export class Lifecycle {
         pane: pane.pane_id,
         args: resolved.args,
       });
-      await this.client.command([
+      await this.client.quiet([
         'pane',
         'report-metadata',
         pane.pane_id,
