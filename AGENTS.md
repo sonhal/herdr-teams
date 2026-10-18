@@ -6,7 +6,14 @@
   that features are very careful about bloating the context unnecessary much.
   The agents should get the information they need from each other but always
   think about if the feature can be implemented exposing the agents to less
-  noise.
+  noise. Every message an agent receives must tell it something it doesn't
+  already have: no per-turn reports, no repeating a task description it was
+  just sent, no mail that repeats command output. CLI output defaults to what
+  the caller needs, such as unread mail and compact text.
+- Build for a use case someone has now. Add a command, setting or policy only
+  when it is needed now, and prefer removing an unused feature to maintaining
+  it. When a milestone lands, remove its scaffolding (placeholder commands,
+  milestone comments) and any state the code can no longer reach.
 
 ## Git workflow
 
@@ -25,6 +32,8 @@
   this workflow.
 - If the branch already has an open pull request, push follow-up commits to
   that branch and update the existing pull request instead of creating another.
+- Before opening a pull request, re-read the diff against each engineering
+  rule in this file and say in the PR body which rules the change touches.
 - Write the pull request title and description around the final change,
   including validation results and any material limitations.
 - Finish by sharing the pull request link and a brief summary of the change
@@ -46,25 +55,34 @@
   the team it was invoked for. The state home is shared by every team and
   every herdr session; pane IDs and agent names are not unique across them.
   Match a teammate on agent name and pane, never pane alone. The lead is
-  whatever agent runs in the lead pane of the team's own herdr session.
+  whatever agent runs in the lead pane of the team's own herdr session. A
+  command's identity comes from where it runs (`HERDR_PANE_ID` matched to a
+  registered pane), not from variables an agent can unset or change.
 - Authority is per effect, not per command. A command that leads to an
   interrupt, a key press, a pane close or a task release requires the same
   authority as the direct command, even when the effect happens later.
 - Loops over members or teams handle errors per item: one failure must not
   block delivery, shutdown or advisories for the others. Save state before
   calling herdr in any step that can be retried, so a retry doesn't send a
-  duplicate message. Bound anything passed as a command argument; Linux
-  limits one argument to 128 KiB.
+  duplicate message. Bound anything passed to a child process, arguments and
+  environment variables alike, by its encoded size: JSON turns a control
+  character into six bytes. Linux limits one string to 128 KiB.
+- Never hold a lock or lease while running a user hook, waiting on an agent,
+  or anything else with a long timeout. Record what to do under the lock, then
+  do the slow work after releasing it.
 - A bug fix starts with a test that fails without it. Cover failure paths
   (herdr errors, missing panes, restarts, respawns), not only success.
 - Unimplemented features fail loudly: placeholder commands exit non-zero and
-  options for unbuilt features are rejected, not ignored. Prompts sent to
-  agents name only working commands.
+  options for unbuilt features are rejected, not ignored. An option value that
+  behaves exactly like another is an unbuilt feature. Prompts, built-in roles,
+  templates and skills name only working commands and behaviour.
 
 ## Testing
 
 - Features needs to be tested against an actually running herdr instance
   before it can be trusted to work.
+- A test asserts what a user or the README expects, not what the code
+  currently does. When the README describes a behaviour, a test pins it.
 
 ## Writing style
 
