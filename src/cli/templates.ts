@@ -30,7 +30,9 @@ export function installTemplateCommands(
       kind?: string;
       team?: string;
     }>();
-    const identity = readIdentity(env, flags.team);
+    if (flags.team !== undefined)
+      throw new Error('team start creates a new team; name it with --name');
+    const identity = readIdentity(env);
     if (!identity.home) throw new Error('Set HERDR_TEAMS_HOME');
     const db = new Store(identity.home, randomUUID());
     const config = new Config(process.cwd(), env);
@@ -40,7 +42,9 @@ export function installTemplateCommands(
       template,
       flags.lead ?? identity.agent ?? 'lead',
       flags.kind,
-      flags.name ?? flags.team ?? template,
+      // Teams are never deleted, so a bare template name would soon make
+      // --team <name> ambiguous; the ID prefix keeps the default distinct.
+      flags.name ?? `${template.slice(0, 27)}-${db.id.slice(0, 4)}`,
     );
     (start as Command & { _storeId?: string })._storeId = db.id;
     print(team, format.team);
