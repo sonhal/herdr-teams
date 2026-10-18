@@ -79,8 +79,9 @@
 
 ## Testing
 
-- Features needs to be tested against an actually running herdr instance
-  before it can be trusted to work.
+- Features need to be tested against an actually running herdr instance
+  before they can be trusted. `HERDR_BIN_PATH=$(sh scripts/fetch-herdr.sh) npm run test:live`
+  runs tests/live against the pinned herdr release with a stand-in codex.
 - A test asserts what a user or the README expects, not what the code
   currently does. When the README describes a behaviour, a test pins it.
 
