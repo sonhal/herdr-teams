@@ -33,7 +33,16 @@ export interface Team {
   workspace_id?: string;
   lead_pane_id?: string;
   details?: Record<string, Member>;
-  defaults?: { kind?: string; model?: string; thinking?: string };
+  defaults?: {
+    kind?: string;
+    model?: string;
+    thinking?: string;
+    worktree?: 'shared' | 'dedicated' | 'auto';
+    auto_claim?: boolean;
+    plan_mode?: boolean;
+    plan_approval?: 'lead' | 'none';
+    interactive?: boolean;
+  };
   layout?: { tab_id: string; pane_id: string; count: number; number: number };
   supervisor?: {
     mode: 'pane' | 'tab' | 'off';
@@ -58,6 +67,10 @@ export type EndState =
   'shut-down' | 'closed-by-user' | 'failed-to-launch' | 'crashed' | 'killed';
 export interface Member {
   kind: string;
+  definition?: string;
+  prompt?: string;
+  instructions?: string;
+  auto_claim?: boolean;
   model?: string;
   thinking?: string;
   pane_id?: string;

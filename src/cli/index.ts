@@ -1,4 +1,5 @@
 import { Command, CommanderError } from 'commander';
+import { installTemplateCommands } from './templates.js';
 import { installPlanCommands } from './plans.js';
 import { installWorktreeCommands } from './worktrees.js';
 import { installSupervisionCommands } from './supervision.js';
@@ -131,6 +132,7 @@ export function createCli(options: CliOptions): Command {
   installSupervisionCommands(program, env, stdout);
   installWorktreeCommands(program, env, stdout);
   installPlanCommands(program, env, stdout);
+  installTemplateCommands(program, env, stdout);
   return program;
 }
 
@@ -185,7 +187,7 @@ export async function runCliAsync(
       await reconcile(db, client, env);
       if (
         (argv[0] === '_hook' && argv[1] === 'startup') ||
-        (argv[0] === 'team' && argv[1] === 'create')
+        (argv[0] === 'team' && ['create', 'start'].includes(argv[1] ?? ''))
       )
         await ensureSupervisor(db, client);
     }

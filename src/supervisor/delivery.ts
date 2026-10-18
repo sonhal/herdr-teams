@@ -151,7 +151,8 @@ export async function reconcile(
         !pending.length &&
         agent.agent_status !== 'working' &&
         member !== team.lead &&
-        team.auto_claim !== false
+        team.auto_claim !== false &&
+        team.details?.[member]?.auto_claim !== false
       ) {
         const task = db.autoClaim(member);
         if (task) {

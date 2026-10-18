@@ -1,0 +1,137 @@
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, expect, it } from 'vitest';
+import { Config } from '../src/core/config.js';
+import { Lifecycle } from '../src/core/lifecycle.js';
+import { Store } from '../src/core/store.js';
+import { HerdrClient } from '../src/herdr/index.js';
+import { agent, pane } from './helpers/fixtures.js';
+import { fakeHerdr, jsonReply } from './helpers/fake-herdr.js';
+const homes: string[] = [];
+afterEach(() =>
+  homes.splice(0).forEach((p) => rmSync(p, { recursive: true, force: true })),
+);
+function setup() {
+  const home = mkdtempSync(join(tmpdir(), 'templates-'));
+  homes.push(home);
+  mkdirSync(join(home, '.herdr', 'agents'), { recursive: true });
+  const env = { ...process.env, XDG_CONFIG_HOME: join(home, 'global') };
+  return { home, env, config: new Config(home, env) };
+}
+it('resolves project definitions before compatibility and global definitions', () => {
+  const { home, env, config } = setup();
+  mkdirSync(join(env.XDG_CONFIG_HOME, 'herdr-teams', 'agents'), {
+    recursive: true,
+  });
+  writeFileSync(
+    join(env.XDG_CONFIG_HOME, 'herdr-teams', 'agents', 'reviewer.md'),
+    '---\nkind: codex\nmodel: global\n---\nGlobal role',
+  );
+  writeFileSync(
+    join(home, '.herdr', 'agents', 'reviewer.md'),
+    '---\nkind: codex\nmodel: project\nunknown_key: ignored\n---\nReview the diff',
+  );
+  writeFileSync(join(home, '.herdr', 'teams.yaml'), 'review:\n  - reviewer\n');
+  const template = config.template('review');
+  const resolved = config.resolve(
+    { ...template.members[0]!, model: 'member' },
+    { model: 'default' },
+  );
+  expect(resolved).toMatchObject({
+    model: 'member',
+    instructions: 'Review the diff',
+  });
+  expect(config.definition('reviewer')).not.toHaveProperty('unknown_key');
+});
+it('saves and restarts a team with equivalent roles, defaults and seed tasks', async () => {
+  const { home, env, config } = setup();
+  const original = new Store(join(home, 'state'), 'original');
+  original.create('lead');
+  original.reserveMember('alice', {
+    kind: 'codex',
+    state: 'idle',
+    model: 'test-model',
+    thinking: 'high',
+    instructions: 'Review carefully',
+    prompt: 'Find defects',
+    auto_claim: false,
+    interactive: true,
+    plan_mode: true,
+  });
+  original.updateTeam((t) => {
+    t.defaults = { kind: 'codex', thinking: 'medium' };
+    t.supervisor = { mode: 'off' };
+    t.plan_approval = 'none';
+  });
+  const task = original.add('Seed work', 'Description');
+  original.change(task.id, 'assign', 'lead', 'alice');
+  config.save(original, 'saved', 'project');
+  const fake = await fakeHerdr([
+    jsonReply({ type: 'tab_created', root_pane: pane }),
+    jsonReply({ type: 'agent_started', agent, argv: ['codex'] }),
+    jsonReply({ type: 'pane_info', pane }),
+    jsonReply({ type: 'agent_prompted', agent }),
+    jsonReply({ type: 'agent_info', agent }),
+  ]);
+  try {
+    const restored = new Store(join(home, 'state'), 'restored');
+    await config.start(
+      restored,
+      new Lifecycle(restored, new HerdrClient({ env: fake.env }), env),
+      'saved',
+      'lead',
+    );
+    expect(restored.config().details!.alice).toMatchObject({
+      kind: 'codex',
+      model: 'test-model',
+      thinking: 'high',
+      instructions: 'Review carefully',
+      prompt: 'Find defects',
+      auto_claim: false,
+      interactive: true,
+      plan_mode: true,
+    });
+    expect(restored.tasks()[0]).toMatchObject({
+      subject: 'Seed work',
+      description: 'Description',
+      owner: 'alice',
+      status: 'pending',
+    });
+    expect((await fake.calls())[3]![3]).toContain('then continue');
+    expect(
+      readFileSync(join(home, '.herdr', 'teams.yaml'), 'utf8'),
+    ).not.toContain('pane_id');
+  } finally {
+    await fake.cleanup();
+  }
+});
+it('rejects invalid settings before creating a team or invoking herdr', async () => {
+  const { home, env, config } = setup();
+  writeFileSync(
+    join(home, '.herdr', 'teams.yaml'),
+    'bad:\n  supervisor: {mode: pane, tick_seconds: 0}\n  members: [{name: alice, kind: codex}]\n',
+  );
+  const db = new Store(join(home, 'state'), 'bad');
+  const fake = await fakeHerdr([]);
+  try {
+    await expect(
+      config.start(
+        db,
+        new Lifecycle(db, new HerdrClient({ env: fake.env }), env),
+        'bad',
+        'lead',
+      ),
+    ).rejects.toThrow('tick_seconds');
+    expect(Store.teams(db.home)).toHaveLength(0);
+    expect(await fake.calls()).toHaveLength(0);
+  } finally {
+    await fake.cleanup();
+  }
+});
