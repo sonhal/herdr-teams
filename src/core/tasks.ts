@@ -61,15 +61,9 @@ export class Tasks {
           result,
         });
       if (outcome.code !== 0) {
-        if (JSON.stringify(this.db.task(id)) !== JSON.stringify(task)) {
-          this.db.send(
-            this.db.config().lead,
-            actor,
-            clip(outcome.stderr || `Gate exited ${outcome.code}`),
-          );
+        if (JSON.stringify(this.db.task(id)) !== JSON.stringify(task))
           throw new Error('Task changed while the hook was running; retry');
-        }
-        hooks.failure(actor, task, outcome);
+        hooks.failure(actor, task, outcome, true);
         throw new Error(
           outcome.stderr || `Completion rejected (exit ${outcome.code})`,
         );

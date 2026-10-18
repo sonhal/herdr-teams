@@ -2,13 +2,14 @@ import { Command } from 'commander';
 import { clip } from '../core/store.js';
 import { HerdrClient } from '../herdr/index.js';
 import { group, printer, teamContext, type Output } from './context.js';
+import * as format from './format.js';
 
 export function installControlCommands(
   program: Command,
   env: NodeJS.ProcessEnv,
   output: Output,
 ) {
-  const print = printer(output);
+  const print = printer(output, program);
   function context(cmd: Command, privileged = false) {
     return {
       ...teamContext(cmd, env, privileged),
@@ -30,7 +31,7 @@ export function installControlCommands(
   const steer = program.command('steer <member> <body>');
   steer.action((member: string, body: string) => {
     const { db, actor } = context(steer, true);
-    print(db.send(actor, member, body, true));
+    print(db.send(actor, member, body, true), format.sent);
   });
   const interrupt = program
     .command('interrupt <member>')
@@ -89,6 +90,6 @@ export function installControlCommands(
           `Task #${id} released: ${release.opts<{ reason: string }>().reason}`,
         ),
       );
-    print(released);
+    print(released, format.taskLine);
   });
 }

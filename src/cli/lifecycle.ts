@@ -11,14 +11,15 @@ export function installLifecycleCommands(
   program: Command,
   env: NodeJS.ProcessEnv,
   output: Output,
+  warn: Output = () => {},
 ) {
-  const print = printer(output);
+  const print = printer(output, program);
   function context(cmd: Command, privileged = true) {
     const { db, actor } = teamContext(cmd, env, privileged);
     return {
       db,
       actor,
-      lifecycle: new Lifecycle(db, new HerdrClient({ env }), env),
+      lifecycle: new Lifecycle(db, new HerdrClient({ env }), env, warn),
     };
   }
   const shim = program

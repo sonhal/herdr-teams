@@ -17,16 +17,34 @@ const MAX_PROMPT_BYTES = 96 * 1024;
 
 function wrap(team: string, message: Message): string {
   // clip() covers mail written before Store.send enforced the limit.
+  if (message.kind === 'advisory')
+    return `[herdr-teams] notice about ${message.from} — team "${team}":\n${clip(message.body)}`;
+  return `[herdr-teams] message from ${message.from} (teammate, not the user) — team "${team}":\n${clip(message.body)}`;
+}
+
+/** Mail for one prompt, with the command hints once at the end. */
+function prompt(team: string, messages: Message[]): string {
   // Advisories come from herdr-teams, often about a teammate that has ended,
   // so a reply hint would point at no one.
-  if (message.kind === 'advisory')
-    return `[herdr-teams] notice about ${message.from} — team "${team}":\n${clip(message.body)}\nInspect: herdr-teams status · Tasks: herdr-teams task list`;
-  return `[herdr-teams] message from ${message.from} (teammate, not the user) — team "${team}":\n${clip(message.body)}\nReply: herdr-teams msg send ${message.from} "…" · Tasks: herdr-teams task list`;
+  const senders = [
+    ...new Set(
+      messages.filter((m) => m.kind !== 'advisory').map((m) => m.from),
+    ),
+  ];
+  const hints = [
+    senders.length &&
+      `Reply: herdr-teams msg send ${senders.length === 1 ? senders[0] : '<member>'} "…"`,
+    messages.some((m) => m.kind === 'advisory') &&
+      'Inspect: herdr-teams status',
+    'Tasks: herdr-teams task list',
+  ].filter(Boolean);
+  return `${messages.map((m) => wrap(team, m)).join('\n\n')}\n${hints.join(' · ')}`;
 }
 
 /** The longest prefix of pending mail that fits in one prompt; never empty. */
 function batch(team: string, pending: Message[]): Message[] {
-  let bytes = 0;
+  // Room for the hint line.
+  let bytes = 256;
   const fitting: Message[] = [];
   for (const message of pending) {
     bytes += Buffer.byteLength(wrap(team, message)) + 2;
@@ -250,10 +268,7 @@ export async function reconcile(
         }
         // The rest waits for the next idle turn.
         pending = batch(team.name, pending);
-        await client.agentPrompt(
-          agent.pane_id,
-          pending.map((m) => wrap(team.name, m)).join('\n\n'),
-        );
+        await client.agentPrompt(agent.pane_id, prompt(team.name, pending));
         delete state.interrupts![member];
         delete state.steered![member];
         for (const message of pending) acknowledged.add(message.id);

@@ -6,13 +6,15 @@ import { Store } from '../core/store.js';
 import { HerdrClient } from '../herdr/index.js';
 import { readIdentity } from './identity.js';
 import { group, printer, teamContext, type Output } from './context.js';
+import * as format from './format.js';
 export function installTemplateCommands(
   program: Command,
   env: NodeJS.ProcessEnv,
   output: Output,
+  warn: Output = () => {},
 ) {
   const team = group(program, 'team');
-  const print = printer(output);
+  const print = printer(output, program);
   const start = team
     .command('start <template>')
     .option('--name <name>', 'runtime team name')
@@ -34,14 +36,14 @@ export function installTemplateCommands(
     const config = new Config(process.cwd(), env);
     const team = await config.start(
       db,
-      new Lifecycle(db, new HerdrClient({ env }), env),
+      new Lifecycle(db, new HerdrClient({ env }), env, warn),
       template,
       flags.lead ?? identity.agent ?? 'lead',
       flags.kind,
       flags.name ?? flags.team ?? template,
     );
     (start as Command & { _storeId?: string })._storeId = db.id;
-    print(team);
+    print(team, format.team);
   });
   const list = team
     .command('templates')

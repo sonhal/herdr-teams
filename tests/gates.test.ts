@@ -43,7 +43,7 @@ function script(home: string, event: string, text: string) {
   chmodSync(path, 0o755);
   return path;
 }
-it('a failing npm test keeps the task open and queues feedback for its owner', async () => {
+it('a failing npm test keeps the task open and reports only as the command error', async () => {
   const { db, home, tasks } = setup();
   writeFileSync(
     join(home, 'package.json'),
@@ -57,7 +57,7 @@ it('a failing npm test keeps the task open and queues feedback for its owner', a
   db.change(task.id, 'claim', 'alice');
   await expect(tasks.complete(task.id, 'alice')).rejects.toThrow('gate failed');
   expect(db.task(task.id).status).toBe('in_progress');
-  expect(db.inbox('alice')[0]!.body).toContain('gate failed');
+  expect(db.inbox('alice')).toEqual([]);
 });
 it('rejects task creation with exit 2 before storing a record', async () => {
   const { db, home, tasks } = setup();
@@ -138,7 +138,7 @@ it('warns the lead about a failing gate but not about a deliberate rejection', a
     'add a test',
   );
   expect(db.inbox('lead')).toHaveLength(1);
-  expect(db.inbox('alice').at(-1)!.body).toContain('add a test');
+  expect(db.inbox('alice')).toEqual([]);
   expect(db.tasks().map((t) => t.status)).toEqual(['pending', 'in_progress']);
 });
 it('times out a hung hook and leaves the task open', async () => {

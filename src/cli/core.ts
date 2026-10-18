@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { Store } from '../core/store.js';
 import { pluginStateDir, readIdentity } from './identity.js';
 import { group, printer, teamContext, type Output } from './context.js';
+import * as format from './format.js';
 
 export function installCoreCommands(
   program: Command,
@@ -11,7 +12,7 @@ export function installCoreCommands(
   output: Output,
   warn: Output = () => {},
 ): void {
-  const print = printer(output);
+  const print = printer(output, program);
   function home(command: Command): string {
     const flags = command.optsWithGlobals<{ team?: string }>();
     const home = readIdentity(env, flags.team).home;
@@ -44,10 +45,11 @@ export function installCoreCommands(
         if (env.HERDR_PANE_ID) team.lead_pane_id = env.HERDR_PANE_ID;
         if (env.HERDR_WORKSPACE_ID) team.workspace_id = env.HERDR_WORKSPACE_ID;
       }),
+      format.team,
     );
   });
   const list = team.command('list');
-  list.action(() => print(Store.teams(home(list))));
+  list.action(() => print(Store.teams(home(list)), format.teams));
 
   const tasks = group(program, 'task');
   const add = tasks
@@ -57,21 +59,28 @@ export function installCoreCommands(
     .option('--plan-mode', 'require a plan');
   add.action(async (subject: string) => {
     const { db, actor } = teamContext(add, env);
-    print(await new Tasks(db, env).add(actor, subject, add.opts()));
+    print(
+      await new Tasks(db, env).add(actor, subject, add.opts()),
+      format.taskLine,
+    );
   });
   const taskList = tasks.command('list');
-  taskList.action(() => print(teamContext(taskList, env).db.tasks()));
+  taskList.action(() =>
+    print(teamContext(taskList, env).db.tasks(), format.taskList),
+  );
   const show = tasks.command('show <id>');
-  show.action((id: string) => print(teamContext(show, env).db.task(id)));
+  show.action((id: string) =>
+    print(teamContext(show, env).db.task(id), format.taskDetail),
+  );
   const claim = tasks.command('claim <id>');
   claim.action((id: string) => {
     const { db, actor } = teamContext(claim, env);
-    print(db.change(id, 'claim', actor));
+    print(db.change(id, 'claim', actor), format.taskLine);
   });
   const assign = tasks.command('assign <id> <owner>');
   assign.action((id: string, owner: string) => {
     const { db, actor } = teamContext(assign, env, true);
-    print(db.change(id, 'assign', actor, owner));
+    print(db.change(id, 'assign', actor, owner), format.taskLine);
   });
   const complete = tasks
     .command('complete <id>')
@@ -84,6 +93,7 @@ export function installCoreCommands(
         actor,
         complete.opts<{ result?: string }>().result,
       ),
+      format.taskLine,
     );
   });
   const update = tasks
@@ -93,7 +103,10 @@ export function installCoreCommands(
   update.action((id: string) => {
     const { db, actor } = teamContext(update, env, true);
     const flags = update.opts<{ subject?: string; description?: string }>();
-    print(db.change(id, 'update', actor, flags.subject, flags.description));
+    print(
+      db.change(id, 'update', actor, flags.subject, flags.description),
+      format.taskLine,
+    );
   });
   const reopen = tasks.command('reopen <id>');
   reopen.action((id: string) => {
@@ -108,7 +121,7 @@ export function installCoreCommands(
     });
     if (task.owner)
       db.send(db.config().lead, task.owner, `Task #${id} reopened`);
-    print(task);
+    print(task, format.taskLine);
   });
   const dep = group(tasks, 'dep');
   for (const action of ['add', 'rm']) {
@@ -120,6 +133,7 @@ export function installCoreCommands(
           dependency,
           action === 'rm',
         ),
+        format.taskLine,
       ),
     );
   }
@@ -131,7 +145,7 @@ export function installCoreCommands(
     const urgent = send.opts<{ urgent?: boolean }>().urgent;
     // Urgent mail can press Esc in the recipient's pane, like interrupt.
     const { db, actor } = teamContext(send, env, urgent);
-    print(db.send(actor, recipient, body, urgent));
+    print(db.send(actor, recipient, body, urgent), format.sent);
   });
   const inbox = program
     .command('inbox')
@@ -140,12 +154,13 @@ export function installCoreCommands(
     const { db, actor } = teamContext(inbox, env);
     print(
       inbox.opts<{ all?: boolean }>().all ? db.inbox(actor) : db.unread(actor),
+      format.mail,
     );
   });
   const report = program.command('report <body>');
   report.action((body: string) => {
     const { db, actor } = teamContext(report, env);
-    print(db.send(actor, db.config().lead, body));
+    print(db.send(actor, db.config().lead, body), format.sent);
   });
   const broadcast = program.command('broadcast <body>');
   broadcast.action((body: string) => {
@@ -155,6 +170,7 @@ export function installCoreCommands(
         .config()
         .members.filter((n) => n !== actor)
         .map((n) => db.send(actor, n, body)),
+      format.sent,
     );
   });
 }

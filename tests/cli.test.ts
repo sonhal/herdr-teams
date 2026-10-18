@@ -58,6 +58,39 @@ describe('CLI', () => {
       exitCode: 0,
     });
   });
+  it('prints compact text by default and records with --json', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'cli-'));
+    const db = new Store(home, randomUUID());
+    db.create('lead', 'demo');
+    db.updateTeam((team) => {
+      team.members.push('alice');
+    });
+    const env = { HERDR_TEAMS_HOME: home, HERDR_TEAMS_TEAM: db.id };
+    try {
+      const out = async (...argv: string[]) => (await run(argv, env)).stdout;
+      expect(
+        await out('task', 'add', 'Survey', '--description', 'Compare'),
+      ).toBe('#1 pending: Survey\n');
+      await out('task', 'add', 'Write up');
+      await out('task', 'dep', 'add', '2', '1');
+      expect(await out('task', 'list')).toBe(
+        '#1 pending: Survey\n#2 pending: Write up (after #1)\n',
+      );
+      expect(await out('task', 'show', '1')).toBe(
+        '#1 pending: Survey\nCompare\n',
+      );
+      expect(await out('task', 'assign', '1', 'alice')).toBe(
+        '#1 pending alice: Survey\n',
+      );
+      expect(await out('msg', 'send', 'alice', 'hi')).toBe('Sent to alice\n');
+      expect(await out('inbox')).toBe('(no mail)\n');
+      expect(
+        JSON.parse(await out('task', 'show', '1', '--json')),
+      ).toMatchObject({ id: '1', owner: 'alice', description: 'Compare' });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
   it.each([
     ['--team', 'override', '--json', 'task', 'list'],
     ['task', '--team', 'override', 'list', '--json'],

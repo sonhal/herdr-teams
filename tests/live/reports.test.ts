@@ -63,7 +63,14 @@ describe(`lead mail on herdr ${HERDR_VERSION}`, () => {
       pane: leadPane,
       timeoutMs: 20_000,
     });
-    const created = await cli(['team', 'create', 'demo', '--lead', 'lead']);
+    const created = await cli([
+      'team',
+      'create',
+      'demo',
+      '--lead',
+      'lead',
+      '--json',
+    ]);
     expect(created.exitCode).toBe(0);
     db = new Store(teamHome, JSON.parse(created.stdout).id);
   }, 60_000);
@@ -80,6 +87,7 @@ describe(`lead mail on herdr ${HERDR_VERSION}`, () => {
       'codex',
       '--prompt',
       'Say hello',
+      '--json',
     ]);
     expect(spawned.stderr).toBe('');
     alicePane = JSON.parse(spawned.stdout).pane_id;

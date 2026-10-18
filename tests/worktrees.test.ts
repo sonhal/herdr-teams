@@ -189,3 +189,34 @@ it('reports branch, head, commit count and checkout state on completion', async 
     `Completed task #${task.id}: Write new.txt\nWorktree: team/demo/alice at ${head.slice(0, 12)}, 1 commit(s) on ${base.slice(0, 12)}, clean`,
   );
 });
+it('warns the caller, not the lead inbox, about uncommitted lead changes', async () => {
+  const { db, home } = setup();
+  writeFileSync(join(home, 'base.txt'), 'edited');
+  const client = new HerdrClient({
+    runner: async (_binary, args) => {
+      const branch = args[args.indexOf('--branch') + 1]!;
+      const path = join(home, branch.split('/').at(-1)!);
+      git(home, 'worktree', 'add', '-b', branch, path);
+      const result = {
+        type: 'worktree_created',
+        worktree: { path },
+        root_pane: { pane_id: 'w2:p1', workspace_id: 'w2', tab_id: 'w2:t1' },
+      };
+      return {
+        stdout: JSON.stringify({ id: 'test', result }),
+        stderr: '',
+        exitCode: 0,
+      };
+    },
+  });
+  const warnings: string[] = [];
+  db.reserveMember('alice', { kind: 'codex', state: 'starting' });
+  await new Worktrees(db, client, (text) => warnings.push(text)).create(
+    'alice',
+    home,
+  );
+  expect(warnings).toEqual([
+    "warning: the lead checkout has uncommitted changes; alice's worktree contains committed files only\n",
+  ]);
+  expect(db.inbox('lead')).toEqual([]);
+});

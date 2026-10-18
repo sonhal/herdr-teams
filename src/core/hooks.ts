@@ -139,13 +139,19 @@ export class Hooks {
     return { code: 0, stderr: '' };
   }
   /**
-   * Feedback goes to the actor. Exit 2 is a deliberate rejection; any other
-   * failure is a broken hook, which the lead also hears about.
+   * Feedback goes to the actor, unless the command it ran already reports the
+   * failure. Exit 2 is a deliberate rejection; any other failure is a broken
+   * hook, which the lead also hears about.
    */
-  failure(actor: string, task: Task | undefined, result: HookResult): void {
+  failure(
+    actor: string,
+    task: Task | undefined,
+    result: HookResult,
+    reported = false,
+  ): void {
     const text = clip(result.stderr.trim() || `Hook exited ${result.code}`);
     const lead = this.db.config().lead;
-    this.db.send(lead, actor, text);
+    if (!reported) this.db.send(lead, actor, text);
     this.db.event('hook.failed', {
       actor,
       task: task?.id,

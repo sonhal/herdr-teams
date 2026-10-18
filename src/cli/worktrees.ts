@@ -9,7 +9,7 @@ export function installWorktreeCommands(
   env: NodeJS.ProcessEnv,
   output: Output,
 ) {
-  const print = printer(output);
+  const print = printer(output, program);
   function context(cmd: Command, privileged = true) {
     const { db, actor } = teamContext(cmd, env, privileged);
     return { db, actor, trees: new Worktrees(db, new HerdrClient({ env })) };
