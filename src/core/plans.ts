@@ -1,7 +1,7 @@
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hooks } from './hooks.js';
-import { Store, type Task } from './store.js';
+import { Store, clip, type Task } from './store.js';
 export function planApproval(db: Store, task: Task): 'lead' | 'none' {
   return (
     task.plan_approval ??
@@ -63,7 +63,9 @@ export class Plans {
       this.db.send(
         actor,
         this.db.config().lead,
-        `Plan for #${id} ${task.subject}: ${path}\n${text.split('\n').slice(0, 8).join('\n')}`,
+        clip(
+          `Plan for #${id} ${task.subject}: ${path}\n${text.split('\n').slice(0, 8).join('\n')}`,
+        ),
       );
       this.db.event('plan.submitted', { id, version, path });
       return updated;
@@ -83,7 +85,9 @@ export class Plans {
     this.db.send(
       this.db.config().lead,
       task.owner!,
-      `Plan ${approve ? 'approved' : 'rejected'} for task #${id}${feedback ? `: ${feedback}` : ''}`,
+      clip(
+        `Plan ${approve ? 'approved' : 'rejected'} for task #${id}${feedback ? `: ${feedback}` : ''}`,
+      ),
     );
     this.db.event('plan.verdict', { id, approve, feedback });
     return task;

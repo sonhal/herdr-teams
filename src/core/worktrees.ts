@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { resolve, sep } from 'node:path';
 import { HerdrClient } from '../herdr/index.js';
-import { Store, type Worktree } from './store.js';
+import { Store, clip, type Worktree } from './store.js';
 
 export function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', ['-C', cwd, ...args], {
@@ -206,7 +206,9 @@ export class Worktrees {
     this.db.send(
       member,
       this.db.config().lead,
-      `Worktree request ${id}: ${reason}\nApprove: herdr-teams worktree approve ${id}`,
+      clip(
+        `Worktree request ${id}: ${reason}\nApprove: herdr-teams worktree approve ${id}`,
+      ),
     );
     return id;
   }

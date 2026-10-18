@@ -69,6 +69,9 @@ export class HerdrClient {
   }
 
   private async invoke(argv: readonly string[]): Promise<string> {
+    // Linux's MAX_ARG_STRLEN: 32 pages, including the terminating NUL.
+    if (argv.some((arg) => Buffer.byteLength(arg) >= 128 * 1024))
+      throw new HerdrUsageError('herdr argument exceeds 128 KiB');
     let output;
     try {
       output = await this.runner(this.binary, argv, this.env);

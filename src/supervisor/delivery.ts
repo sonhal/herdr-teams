@@ -3,11 +3,51 @@ import { join } from 'node:path';
 import { Hooks } from '../core/hooks.js';
 import { Worktrees, worktreeStatus } from '../core/worktrees.js';
 import { syncMembers } from './lifecycle.js';
-import { Store, type Message } from '../core/store.js';
+import { each } from './each.js';
+import {
+  Store,
+  clip,
+  MAX_MESSAGE_BYTES,
+  type Message,
+  type Team,
+} from '../core/store.js';
 import { HerdrClient, type AgentInfo } from '../herdr/index.js';
 
+// Leaves room below 128 KiB for herdr's other arguments.
+const MAX_PROMPT_BYTES = 96 * 1024;
+
 function wrap(team: string, message: Message): string {
-  return `[herdr-teams] message from ${message.from} (teammate, not the user) — team "${team}":\n${message.body}\nReply: herdr-teams msg send ${message.from} "…" · Tasks: herdr-teams task list`;
+  // clip() covers mail written before Store.send enforced the limit.
+  return `[herdr-teams] message from ${message.from} (teammate, not the user) — team "${team}":\n${clip(message.body)}\nReply: herdr-teams msg send ${message.from} "…" · Tasks: herdr-teams task list`;
+}
+
+/** The longest prefix of pending mail that fits in one prompt; never empty. */
+function batch(team: string, pending: Message[]): Message[] {
+  let bytes = 0;
+  const fitting: Message[] = [];
+  for (const message of pending) {
+    bytes += Buffer.byteLength(wrap(team, message)) + 2;
+    if (fitting.length && bytes > MAX_PROMPT_BYTES) break;
+    fitting.push(message);
+  }
+  return fitting;
+}
+
+/** Members match on agent name and pane: pane IDs are reused after restarts. */
+export function liveMember(
+  team: Team,
+  member: string,
+  agents: AgentInfo[],
+): AgentInfo | undefined {
+  const pane =
+    member === team.lead ? team.lead_pane_id : team.details?.[member]?.pane_id;
+  return agents.find(
+    (a) =>
+      (pane === undefined || a.pane_id === pane) &&
+      // The lead runs in a pane the user opened, which herdr may leave unnamed.
+      (a.name === member ||
+        (member === team.lead && pane !== undefined && a.name === undefined)),
+  );
 }
 
 /** Hooks and reconciliation share a lease; never hold the store lock across I/O. */
@@ -52,7 +92,10 @@ export async function reconcile(
     let team = db.config();
     const state = db.deliveryState();
     const agents = (await client.agentList()).agents;
-    await syncMembers(db, client, agents);
+    const failures: unknown[] = [];
+    await syncMembers(db, client, agents).catch((error: unknown) =>
+      failures.push(error),
+    );
     team = db.config();
     const members = new Map<string, AgentInfo>();
     for (const member of team.members) {
@@ -63,10 +106,7 @@ export async function reconcile(
         details?.state === 'starting'
       )
         continue;
-      const pane = member === team.lead ? team.lead_pane_id : details?.pane_id;
-      const agent = agents.find((a) =>
-        pane ? a.pane_id === pane : a.name === member,
-      );
+      const agent = liveMember(team, member, agents);
       if (agent) members.set(member, agent);
     }
     state.blocked ??= {};
@@ -89,14 +129,14 @@ export async function reconcile(
     }
     db.saveDeliveryState(state);
     // Reports run before delivery so the lead receives them in this batch.
-    for (const [member, agent] of members) {
+    await each(members, async (member, agent) => {
       if (
         member === team.lead ||
         !['idle', 'done'].includes(agent.agent_status)
       )
-        continue;
+        return;
       const seq = agent.completion_seq ?? 0;
-      if (seq <= (state.reports[member] ?? 0)) continue;
+      if (seq <= (state.reports[member] ?? 0)) return;
       state.idle_hooks ??= {};
       if (seq > (state.idle_hooks[member] ?? 0)) {
         const hooks = new Hooks(db, env);
@@ -125,15 +165,17 @@ export async function reconcile(
       db.send(
         member,
         team.lead,
-        `Turn completed.\n${tasks.map((t) => `#${t.id} ${t.status}: ${t.subject}`).join('\n')}\n${output}\n${team.details?.[member]?.worktree ? JSON.stringify(worktreeStatus(team.details[member]!.worktree!)) : ''}`,
+        clip(
+          `Turn completed.\n${tasks.map((t) => `#${t.id} ${t.status}: ${t.subject}`).join('\n')}\n${output}\n${team.details?.[member]?.worktree ? JSON.stringify(worktreeStatus(team.details[member]!.worktree!)) : ''}`,
+        ),
         false,
         'report',
       );
       state.reports[member] = seq;
       db.saveDeliveryState(state);
-    }
-    for (const [member, agent] of members) {
-      if (!['idle', 'done', 'working'].includes(agent.agent_status)) continue;
+    }).catch((error: unknown) => failures.push(error));
+    await each(members, async (member, agent) => {
+      if (!['idle', 'done', 'working'].includes(agent.agent_status)) return;
       const inbox = db.inbox(member);
       const cursor = state.cursors[member];
       const index =
@@ -145,8 +187,12 @@ export async function reconcile(
       let pending = inbox
         .slice(index + 1)
         .filter((m) => !acknowledged.has(m.id));
-      if (agent.agent_status === 'working')
+      const steers = team.details?.[member]?.kind !== 'codex';
+      if (agent.agent_status === 'working') {
         pending = pending.filter((m) => m.urgent);
+        // Esc was already pressed for the newest urgent message.
+        if (steers && pending.at(-1)?.id === state.steered![member]) return;
+      }
       if (
         !pending.length &&
         agent.agent_status !== 'working' &&
@@ -168,29 +214,34 @@ export async function reconcile(
             db.send(
               team.lead,
               member,
-              `You claimed task #${task.id}: ${task.subject}\n${task.description}\n${task.plan_mode || team.details?.[member]?.plan_mode ? 'Before editing, submit a plan: herdr-teams plan submit ' + task.id + ' --file plan.md. Follow the team plan approval policy.\n' : ''}${db.task(task.id).worktree?.binding ? `Work in ${JSON.stringify(db.task(task.id).worktree!.binding!.path)}` : ''}`,
+              `You claimed task #${task.id}: ${task.subject}\n${clip(task.description, MAX_MESSAGE_BYTES / 2)}\n${task.plan_mode || team.details?.[member]?.plan_mode ? 'Before editing, submit a plan: herdr-teams plan submit ' + task.id + ' --file plan.md. Follow the team plan approval policy.\n' : ''}${db.task(task.id).worktree?.binding ? `Work in ${JSON.stringify(db.task(task.id).worktree!.binding!.path)}` : ''}`,
             ),
           ];
         }
       }
-      if (!pending.length) continue;
+      if (!pending.length) return;
       // Recheck after reports and disk operations; herdr also rejects blocked agents.
       const current = (await client.agentGet(agent.pane_id)).agent;
       if (current.pane_id !== agent.pane_id || current.name !== agent.name)
-        continue;
+        return;
       if (
         current.agent_status === 'blocked' ||
         current.agent_status === 'unknown'
       )
-        continue;
+        return;
       if (current.agent_status === 'working') {
         pending = pending.filter((m) => m.urgent);
-        if (!pending.length) continue;
-        if (team.details?.[member]?.kind !== 'codex') {
+        if (!pending.length) return;
+        if (steers) {
+          // Saved first so a retried reconcile doesn't press Esc again.
+          state.steered![member] = pending.at(-1)!.id;
+          db.saveDeliveryState(state);
           await client.sendKeys(agent.pane_id, 'esc');
-          continue;
+          return;
         }
       }
+      // The rest waits for the next idle turn.
+      pending = batch(team.name, pending);
       await client.agentPrompt(
         agent.pane_id,
         pending.map((m) => wrap(team.name, m)).join('\n\n'),
@@ -203,7 +254,9 @@ export async function reconcile(
       }
       state.acknowledged[member] = [...acknowledged];
       db.saveDeliveryState(state);
-    }
+    }).catch((error: unknown) => failures.push(error));
+    if (failures.length)
+      throw new Error(failures.map((e) => (e as Error).message).join('; '));
   } finally {
     await rm(lease, { recursive: true, force: true });
   }

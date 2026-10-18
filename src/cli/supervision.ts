@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { Store } from '../core/store.js';
+import { Store, clip } from '../core/store.js';
 import { HerdrClient } from '../herdr/index.js';
 import { supervise, ensureSupervisor } from '../supervisor/runtime.js';
 import { readIdentity } from './identity.js';
@@ -48,7 +48,7 @@ export function installSupervisionCommands(
   });
   const steer = replace('steer', 'steer <member> <body>');
   steer.action((member: string, body: string) => {
-    const { db, actor } = context(steer);
+    const { db, actor } = context(steer, true);
     output(JSON.stringify(db.send(actor, member, body, true)) + '\n');
   });
   const interrupt = replace('interrupt', 'interrupt <member>').option(
@@ -66,7 +66,7 @@ export function installSupervisionCommands(
     await client.sendKeys(details.pane_id, 'esc');
     db.patchMember(member, { interrupted: true, progress_at: Date.now() });
     const then = interrupt.opts<{ then?: string }>().then;
-    if (then) db.send(actor, member, then);
+    if (then) db.send(actor, member, clip(then));
     db.event('member.interrupted', { member });
     output(JSON.stringify({ member, state: 'interrupted' }) + '\n');
   });
@@ -111,7 +111,9 @@ export function installSupervisionCommands(
       db.send(
         actor,
         owner,
-        `Task #${id} released: ${release.opts<{ reason: string }>().reason}`,
+        clip(
+          `Task #${id} released: ${release.opts<{ reason: string }>().reason}`,
+        ),
       );
     output(JSON.stringify(released) + '\n');
   });

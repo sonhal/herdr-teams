@@ -67,22 +67,31 @@ restricted to the lead or a user outside a member pane. `task update` accepts
 `team list`, `task list`, `task show`, `broadcast` and `report` are also available.
 Core commands currently print JSON, including when `--json` is omitted.
 Messages are persisted and delivered in batches when recipients are idle.
-Blocked recipients retain their mail. `--urgent` mail steers a working Codex
-agent; other kinds use interrupt-then-idle delivery. Set `auto_claim: false` in team config
+Blocked recipients retain their mail. A message body is limited to 32 KiB;
+send a file path for anything larger. Large backlogs arrive over several
+prompts. Only the lead or user may send `--urgent` mail, which steers a working
+Codex agent; other kinds use interrupt-then-idle delivery. Set `auto_claim: false` in team config
 to disable automatic claiming. Generated state belongs outside the repository
 or in an ignored directory.
 
 ## Teammates
 
-Inside a herdr session, create a team from the lead pane, then spawn members:
+herdr does not put plugin commands on PATH, so link the CLI for the lead once
+by running the shim from the plugin root (`herdr plugin list --json` shows
+`plugin_root`; for a linked checkout it is the checkout). Inside a herdr
+session, create a team from the lead pane, then spawn members:
 
 ```sh
+<plugin-root>/bin/herdr-teams install-shim --directory ~/.local/bin
 herdr-teams team create demo
 herdr-teams --team demo spawn alice --kind codex --thinking high --prompt "Review the implementation"
 herdr-teams --team demo shutdown alice
 ```
 
-Members receive team identity and the CLI on PATH. Splits use team tabs with
+Inside herdr, team state defaults to herdr's plugin state directory, the one
+its startup and event hooks read; leave `HERDR_TEAMS_HOME` unset there. A team
+belongs to the herdr session it was created in: commands and hooks from other
+sessions leave it alone. Members receive team identity and the CLI on PATH. Splits use team tabs with
 four teammates per tab; `--placement tab|workspace` gives a member its own
 location. All panes open without taking focus. `--model` and `--thinking`
 override team defaults. Use `--worktree dedicated` for an isolated checkout, or `auto` to start shared.
@@ -109,7 +118,7 @@ herdr-teams --team demo interrupt alice --then "Summarize your current work"
 herdr-teams --team demo task release 1 --reason "Reassigning the task"
 ```
 
-Only the lead or user may interrupt, release or kill. Blocked agents must have
+Only the lead or user may steer, interrupt, release or kill. Blocked agents must have
 their permission or question prompt answered before those input operations.
 
 ## Worktrees
