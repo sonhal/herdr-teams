@@ -1,0 +1,3 @@
+#!/usr/bin/env node
+// Keep this shim executable: herdr adds the plugin's bin directory to PATH.
+import('../dist/bin/herdr-teams.js');
