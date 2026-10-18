@@ -1,6 +1,6 @@
 ---
 description: Write and run tests for the tasks the lead assigns.
-worktree: dedicated
+worktree: auto
 auto_claim: false
 ---
 
