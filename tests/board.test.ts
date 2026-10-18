@@ -157,16 +157,23 @@ it('updates sidebar labels only when their content changes', async () => {
     { stdout: '' },
     { stdout: '' },
     { stdout: '' },
-    { stdout: '' },
   ]);
   try {
     const client = new HerdrClient({ env: fake.env });
     await syncSidebar(db, client);
+    // A member pane shows the member name via display-agent; the title is left
+    // to herdr's agent state, so the member label does not carry state.
+    const first = await fake.calls();
+    const alice = first.find((c) => c.includes('w1:p2'))!;
+    expect(alice).not.toContain('--title');
+    expect(alice).toContain('alice');
     await syncSidebar(db, client);
     expect(await fake.calls()).toHaveLength(2);
     db.patchMember('alice', { state: 'blocked' });
     await syncSidebar(db, client);
-    expect(await fake.calls()).toHaveLength(4);
+    // A state change no longer re-syncs the member pane; only the workspace
+    // summary (blocked count) changes.
+    expect(await fake.calls()).toHaveLength(3);
   } finally {
     await fake.cleanup();
   }
