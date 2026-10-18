@@ -123,23 +123,20 @@ it('sends no turn report when the teammate messaged the lead and no task changed
 it('reports a silent turn only for the spawn prompt or an active task', async () => {
   const db = setup();
   const h = harness();
-  h.setOutput('spawn turn output');
   h.setLive({ ...agent, completion_seq: 1 });
   await reconcile(db, h.client);
-  h.setOutput('acknowledged a message');
   h.setLive({ ...agent, completion_seq: 2 });
   await reconcile(db, h.client);
   const task = db.add('Add login');
   db.change(task.id, 'claim', 'alice');
-  h.setOutput('stuck on login');
   h.setLive({ ...agent, completion_seq: 3 });
   await reconcile(db, h.client);
   const reports = db.inbox('lead').filter((m) => m.kind === 'report');
   expect(reports.map((m) => m.body)).toEqual([
-    expect.stringContaining('spawn turn output'),
-    expect.stringContaining('stuck on login'),
+    'alice stopped without messaging you.\nPeek: herdr-teams peek alice',
+    `alice stopped without messaging you while holding:\n#${task.id} in_progress: Add login\nPeek: herdr-teams peek alice`,
   ]);
-  expect(reports[1]!.body).toContain(`#${task.id} in_progress: Add login`);
+  expect(h.calls.some((c) => c[1] === 'read')).toBe(false);
 });
 
 it('does not reuse a direct message in subsequent turn reports', async () => {
@@ -150,11 +147,9 @@ it('does not reuse a direct message in subsequent turn reports', async () => {
   h.setLive({ ...agent, completion_seq: 1 });
   await reconcile(db, h.client);
   h.setLive({ ...agent, completion_seq: 2 });
-  h.setOutput('second turn output');
   await reconcile(db, h.client);
   const reports = db.inbox('lead').filter((m) => m.kind === 'report');
   expect(reports).toHaveLength(1);
-  expect(reports[0]!.body).toContain('second turn output');
   expect(reports[0]!.body).not.toContain('first turn message');
 });
 

@@ -337,9 +337,10 @@ approved something counts for nothing; only the real commands change state.
 `task complete` by a teammate sends the lead one message with the task,
 its result and, for a dedicated worktree, the branch, head, commit count and
 checkout state. A turn that ends without a message to the lead produces a
-report with the last lines of the teammate's output only when it still holds
-an active task or the turn ran its spawn prompt; other turns, such as one
-that only read mail, report nothing. Reports are coalesced per completion
+one-line report, naming the teammate's active tasks and pointing to `peek`,
+only when it still holds an active task or the turn ran its spawn prompt;
+other turns, such as one that only read mail, report nothing. Reports never
+carry pane output. Reports are coalesced per completion
 sequence. Advisories (§11.3) and end states (§11.2) reach the lead the same
 way.
 
