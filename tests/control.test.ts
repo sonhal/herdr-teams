@@ -1,3 +1,4 @@
+import { addMember } from './helpers/members.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -90,7 +91,7 @@ it('refuses to interrupt a blocked Codex agent', async () => {
       env: {
         ...fake.env,
         HERDR_TEAMS_HOME: db.home,
-        HERDR_TEAMS_TEAM: db.team,
+        HERDR_TEAMS_TEAM: db.id,
       },
       stderr: (s) => {
         stderr += s;
@@ -109,14 +110,14 @@ it.each([
   [['msg', 'send', 'alice', 'stop that', '--urgent']],
 ])('refuses urgent input from a teammate: %j', async (argv) => {
   const db = setup();
-  db.addMember('bob');
+  addMember(db, 'bob');
   let stderr = '';
   const code = await runCliAsync(argv, {
     version: 'test',
     env: {
       HERDR_BIN_PATH: '/nonexistent/herdr',
       HERDR_TEAMS_HOME: db.home,
-      HERDR_TEAMS_TEAM: db.team,
+      HERDR_TEAMS_TEAM: db.id,
       HERDR_TEAMS_AGENT: 'bob',
     },
     stdout: () => {},
@@ -131,13 +132,13 @@ it.each([
 
 it('lets a teammate send ordinary mail', async () => {
   const db = setup();
-  db.addMember('bob');
+  addMember(db, 'bob');
   const code = await runCliAsync(['msg', 'send', 'alice', 'hello'], {
     version: 'test',
     env: {
       HERDR_BIN_PATH: '/nonexistent/herdr',
       HERDR_TEAMS_HOME: db.home,
-      HERDR_TEAMS_TEAM: db.team,
+      HERDR_TEAMS_TEAM: db.id,
       HERDR_TEAMS_AGENT: 'bob',
     },
     stdout: () => {},

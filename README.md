@@ -11,7 +11,7 @@ Codex, pi, …), each in its own herdr pane with its own model and thinking leve
 - **Task board:** a shared board with statuses and dependencies.
 - **Inboxes:** direct messages, broadcasts and reports to the lead, delivered
   when an agent is idle.
-- **Git worktrees:** isolated checkouts for parallel work, managed by the lead.
+- **Git worktrees:** an optional isolated checkout per teammate, merged by the lead.
 - **Plan mode and quality gates:** plans before code, and hooks that can reject
   a task's completion.
 - **Team control:** inspect, steer, interrupt or stop
@@ -102,8 +102,7 @@ location. All panes open without taking focus. `--model` and `--thinking`
 override team defaults. Teammates share the lead's checkout; `--worktree dedicated` gives one an isolated checkout.
 In herdr, a new teammate's agent name includes a four-character suffix derived
 from its instance ID and member name. The readable `<team>-<member>` prefix is
-trimmed to 27 characters so the full name fits in 32. The untrimmed combination
-must also fit in 32 characters. Use the member name in herdr-teams commands;
+trimmed to 27 characters so the full name fits in 32. Use the member name in herdr-teams commands;
 the stored herdr agent name is handled automatically.
 
 A shutdown request waits for the member to accept or reject it. Accepted requests
@@ -132,19 +131,20 @@ their permission or question prompt answered before those input operations.
 
 ## Worktrees
 
+Teammates share the lead's checkout by default, which suits research, review
+and work on separate files. A teammate spawned with `--worktree dedicated` gets
+its own branch and checkout in a new workspace:
+
 ```sh
-herdr-teams --team demo worktree create alice
+herdr-teams --team demo spawn alice --worktree dedicated --prompt "…"
 herdr-teams --team demo worktree status alice
 herdr-teams --team demo worktree diff alice
 herdr-teams --team demo worktree merge alice
 herdr-teams --team demo worktree remove alice
 ```
 
-Only the lead or user creates, merges and removes worktrees. Teammates can
-`worktree request --reason "…"`; the lead uses `worktree approve <id>`.
-`worktree_requests: auto` approves requests immediately. `task add --worktree`
-requires an isolated checkout when claimed. Creation pins a committed base;
-uncommitted changes in the lead checkout stay there.
+The worktree starts from the lead's last commit; uncommitted changes in the
+lead checkout stay there. Only the lead or user merges and removes worktrees.
 
 Completion reports include branch, base, head, commit count and checkout state.
 Merge requires clean checkouts and runs only on an explicit command. Removal
@@ -170,10 +170,9 @@ Executable hooks in `.herdr/teams/hooks/` override global hooks in
 `~/.config/herdr-teams/hooks/`. Names are `task_created`, `task_completed`,
 `plan_submitted` and `teammate_idle`. They receive JSON on stdin and team,
 member and task identity in `HERDR_TEAMS_*` variables. Completion gates run
-first, in the task's worktree. Exit 2 rejects an action with feedback; other
-failures retain the open task and apply `hooks.failure_action` (`warn`,
-`reopen`, `followup` or `reopen_followup`). `max_reopens` defaults to 3 and
-`followup_owner` to `member`. Hook timeouts default to 600 seconds.
+first, in the owner's worktree if it has one. Exit 2 rejects an action with
+feedback; any other failure also keeps the task open and warns the lead. Hook
+timeouts default to 600 seconds.
 Existing `.pi/team-hooks/task_completed.sh` hooks also run with JSON as their
 first argument and `PI_TEAM` set.
 
@@ -253,30 +252,6 @@ Actions use the CLI's usual permission and blocked-agent checks.
 
 Event hooks update member labels and workspace progress tokens. The board is
 optional; delivery continues when it is closed.
-
-## MCP
-
-`herdr-teams mcp` serves JSON-RPC MCP tools over stdio. Configure your MCP
-client to run the built shim with the same `HERDR_TEAMS_HOME`,
-`HERDR_TEAMS_TEAM`, `HERDR_TEAMS_AGENT` and herdr environment as the CLI.
-Tools use CLI argument arrays, preserving member identity and authorization.
-Long-running terminal commands are available through the CLI only.
-
-```json
-{
-  "mcpServers": {
-    "herdr-teams": {
-      "command": "herdr-teams",
-      "args": ["mcp"],
-      "env": {
-        "HERDR_TEAMS_HOME": "<state-directory>",
-        "HERDR_TEAMS_TEAM": "<team>",
-        "HERDR_TEAMS_AGENT": "<member>"
-      }
-    }
-  }
-}
-```
 
 ## Installation and support
 

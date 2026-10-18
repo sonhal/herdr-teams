@@ -11,7 +11,7 @@ import { homedir } from 'node:os';
 import { randomUUID, createHash } from 'node:crypto';
 import { parse, stringify } from 'yaml';
 import { adapter } from '../adapters/index.js';
-import { Store, newAgentName, type Team } from './store.js';
+import { Store, type Team } from './store.js';
 import { Lifecycle, type SpawnOptions } from './lifecycle.js';
 import { Tasks } from './tasks.js';
 import { pluginRoot } from './paths.js';
@@ -33,7 +33,6 @@ export interface Template {
   lead?: Definition;
   defaults?: Definition;
   plan_approval?: 'lead' | 'none';
-  worktree_requests?: 'lead' | 'auto';
   hooks?: Team['hooks'];
   members: (Definition & { name: string; agent?: string; prompt?: string })[];
   tasks?: {
@@ -42,7 +41,6 @@ export interface Template {
     owner?: string;
     gate?: string;
     plan_mode?: boolean;
-    worktree?: boolean;
   }[];
 }
 function object(value: unknown, label: string): Record<string, unknown> {
@@ -222,36 +220,22 @@ export class Config {
       !['lead', 'none'].includes(template.plan_approval)
     )
       throw new Error('Invalid plan approval');
-    if (
-      template.worktree_requests &&
-      !['lead', 'auto'].includes(template.worktree_requests)
-    )
-      throw new Error('Invalid worktree request policy');
     if ('supervisor' in template)
       throw new Error(
         'The supervisor setting was removed; delete it to use event-hook delivery',
       );
+    if ('worktree_requests' in template)
+      throw new Error(
+        'The worktree_requests setting was removed; spawn teammates with worktree: dedicated instead',
+      );
     if (template.hooks !== undefined) {
-      object(template.hooks, 'hooks');
-      const { failure_action, max_reopens, followup_owner, timeout_seconds } =
-        template.hooks;
-      if (
-        failure_action &&
-        !['warn', 'reopen', 'followup', 'reopen_followup'].includes(
-          failure_action,
-        )
-      )
-        throw new Error('Invalid hook failure action');
-      if (
-        max_reopens !== undefined &&
-        (!Number.isSafeInteger(max_reopens) || max_reopens < 0)
-      )
-        throw new Error('Invalid max_reopens');
-      if (
-        followup_owner &&
-        !['member', 'lead', 'none'].includes(followup_owner)
-      )
-        throw new Error('Invalid followup owner');
+      const hooks = object(template.hooks, 'hooks');
+      for (const removed of ['failure_action', 'max_reopens', 'followup_owner'])
+        if (removed in hooks)
+          throw new Error(
+            `The hooks.${removed} setting was removed; a failing hook now warns the lead and exit 2 rejects`,
+          );
+      const { timeout_seconds } = template.hooks;
       if (
         timeout_seconds !== undefined &&
         (!Number.isFinite(timeout_seconds) || timeout_seconds <= 0)
@@ -265,6 +249,10 @@ export class Config {
         throw new Error('Invalid seed task subject');
       if (task.owner && task.owner !== '$lead' && !names.has(task.owner))
         throw new Error('Unknown seed task owner');
+      if ('worktree' in task)
+        throw new Error(
+          'Seed task worktree was removed; give the owner worktree: dedicated instead',
+        );
     }
     return template;
   }
@@ -290,8 +278,6 @@ export class Config {
     key(lead);
     if (template.members.some((m) => m.name === lead))
       throw new Error('Lead and teammate names must differ');
-    for (const member of template.members)
-      newAgentName(displayName, member.name, db.id);
     const defaults = { ...template.lead, ...template.defaults };
     if (kind !== undefined) defaults.kind = kind;
     // Resolve a missing kind before creating anything, so a failure leaves no team.
@@ -309,8 +295,6 @@ export class Config {
       if (template.defaults?.auto_claim !== undefined)
         team.auto_claim = template.defaults.auto_claim;
       if (template.plan_approval) team.plan_approval = template.plan_approval;
-      if (template.worktree_requests)
-        team.worktree_requests = template.worktree_requests;
       if (template.hooks) team.hooks = template.hooks;
       if (this.env.HERDR_PANE_ID) team.lead_pane_id = this.env.HERDR_PANE_ID;
       if (this.env.HERDR_WORKSPACE_ID)
@@ -388,22 +372,17 @@ export class Config {
         auto_claim: team.auto_claim ?? team.defaults?.auto_claim ?? true,
       },
       plan_approval: team.plan_approval ?? 'lead',
-      worktree_requests: team.worktree_requests ?? 'lead',
       hooks: team.hooks,
       members,
-      tasks: db
-        .tasks()
-        .filter((t) => t.status !== 'deleted')
-        .map((t) => ({
-          subject: t.subject,
-          description: t.description,
-          ...(t.owner
-            ? { owner: t.owner === team.lead ? '$lead' : t.owner }
-            : {}),
-          ...(t.gate ? { gate: t.gate } : {}),
-          plan_mode: t.plan_mode ?? false,
-          worktree: t.worktree?.required ?? false,
-        })),
+      tasks: db.tasks().map((t) => ({
+        subject: t.subject,
+        description: t.description,
+        ...(t.owner
+          ? { owner: t.owner === team.lead ? '$lead' : t.owner }
+          : {}),
+        ...(t.gate ? { gate: t.gate } : {}),
+        plan_mode: t.plan_mode ?? false,
+      })),
     };
     write(path, stringify(values));
     return { path, template: name };

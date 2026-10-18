@@ -570,23 +570,12 @@ describe('herdr agent names', () => {
       await fake.cleanup();
     }
   });
-  it('rejects a team and member name too long for herdr before opening a pane', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'lifecycle-'));
-    homes.push(home);
-    const db = new Store(home, randomUUID());
-    db.create('lead', 'a'.repeat(20));
-    const fake = await fakeHerdr([]);
-    try {
-      await expect(
-        new Lifecycle(db, new HerdrClient({ env: fake.env }), fake.env).spawn(
-          'b'.repeat(12),
-          { prompt: 'test' },
-        ),
-      ).rejects.toThrow(/32 characters/);
-      expect(await fake.calls()).toHaveLength(0);
-      expect(db.config().details?.['b'.repeat(12)]).toBeUndefined();
-    } finally {
-      await fake.cleanup();
-    }
+  it('trims long team and member names to fit herdr and keeps them distinct', () => {
+    const team = 'a'.repeat(20);
+    const first = newAgentName(team, 'b'.repeat(12), instanceId);
+    const second = newAgentName(team, `${'b'.repeat(11)}c`, instanceId);
+    expect(first).toHaveLength(32);
+    expect(first.slice(0, 27)).toBe(second.slice(0, 27));
+    expect(first).not.toBe(second);
   });
 });

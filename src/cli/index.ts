@@ -1,4 +1,3 @@
-import { serveMcp } from '../mcp/server.js';
 import { Command, CommanderError } from 'commander';
 import { installBoardCommands } from './board.js';
 import { syncSidebar } from '../runtime/sidebar.js';
@@ -21,7 +20,7 @@ export interface CliOptions {
   stderr?: (text: string) => void;
 }
 
-/** Shared CLI for shell users, the board and MCP tools. */
+/** Shared CLI for shell users and the board. */
 export function createCli(options: CliOptions): Command {
   const env = options.env ?? process.env;
   const stdout =
@@ -37,19 +36,22 @@ export function createCli(options: CliOptions): Command {
     .configureOutput({ writeOut: stdout, writeErr: stderr })
     .exitOverride();
 
-  for (const name of ['team', 'task', 'msg', 'plan', 'worktree', '_action'])
-    program.command(name);
-  program.commands.find((c) => c.name() === 'task')!.command('dep');
+  program.command('team').description('Create, start, list and save teams');
+  program
+    .command('task')
+    .description('Manage persistent tasks and dependencies')
+    .command('dep')
+    .description('Add or remove task dependencies');
+  program.command('msg').description('Queue messages in member inboxes');
+  program.command('plan').description('Submit and review task plans');
+  program
+    .command('worktree')
+    .description('Inspect, merge and remove dedicated worktrees');
+  program.command('_action').description('Run a herdr plugin action');
   const hooks = program
     .command('_hook')
     .description('Reconcile plugin lifecycle events');
   for (const name of ['startup', 'event']) hooks.command(name).action(() => {});
-  program
-    .command('mcp')
-    .description('Serve MCP tools over stdio')
-    .action(async () => {
-      await serveMcp(process.stdin, stdout, options.version, env);
-    });
   installCoreCommands(program, env, stdout, stderr);
   installLifecycleCommands(program, env, stdout);
   installControlCommands(program, env, stdout);
@@ -58,20 +60,6 @@ export function createCli(options: CliOptions): Command {
   installTemplateCommands(program, env, stdout);
   installBoardCommands(program, env, stdout);
   return program;
-}
-
-export function runCli(argv: string[], options: CliOptions): number {
-  const program = createCli(options);
-  try {
-    program.parse(argv.length ? argv : ['--help'], { from: 'user' });
-    return 0;
-  } catch (error) {
-    if (error instanceof CommanderError) return error.exitCode === 0 ? 0 : 2;
-    (options.stderr ?? ((text: string) => process.stderr.write(text)))(
-      `error: ${error instanceof Error ? error.message : String(error)}\n`,
-    );
-    return 1;
-  }
 }
 
 /** The team a command ran against, including one it just created. */
@@ -98,7 +86,6 @@ export async function runCliAsync(
   argv: string[],
   options: CliOptions,
 ): Promise<number> {
-  const code = 0;
   const program = createCli(options);
   try {
     await program.parseAsync(argv.length ? argv : ['--help'], {
@@ -115,12 +102,12 @@ export async function runCliAsync(
     argv.some((arg) => ['--help', '-h', '--version', '-V'].includes(arg)) ||
     !argv.length
   )
-    return code;
+    return 0;
   const command = program.args[0];
-  if (['status', 'board', 'log', 'mcp'].includes(command ?? '')) return 0;
+  if (['status', 'board', 'log'].includes(command ?? '')) return 0;
   const env = options.env ?? process.env;
   const identity = readIdentity(env);
-  if (!identity.home) return code;
+  if (!identity.home) return 0;
   const hook = command === '_hook' ? program.args[1] : undefined;
   // Hooks carry no team identity; they act for every team of this session.
   // A command acts only for the team it ran against.
@@ -180,6 +167,5 @@ export async function runCliAsync(
       );
     }
   }
-  if (failed && hook) return 1;
-  return code;
+  return failed && hook ? 1 : 0;
 }

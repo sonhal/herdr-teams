@@ -1,3 +1,4 @@
+import { addMember } from './helpers/members.js';
 import {
   mkdtempSync,
   rmSync,
@@ -91,7 +92,7 @@ describe('M1 store', () => {
   });
   it('checks lead authority and notifies assigned tasks when dependencies complete', () => {
     const { db } = fixture();
-    db.addMember('alice');
+    addMember(db, 'alice');
     expect(() => db.authorize('alice', true)).toThrow('Only the lead');
     const a = db.add('prerequisite');
     const b = db.add('dependent');
@@ -106,7 +107,7 @@ describe('M1 store', () => {
   it('allows exactly one of 20 independent claimers to win', async () => {
     const { home, db } = fixture();
     const task = db.add('contended');
-    for (let i = 0; i < 20; i++) db.addMember(`worker${i}`);
+    for (let i = 0; i < 20; i++) addMember(db, `worker${i}`);
     const results = await Promise.all(
       Array.from(
         { length: 20 },

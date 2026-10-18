@@ -55,14 +55,7 @@ export function renderBoard(
   selectedMember = 0,
   focus = 'tasks',
 ): string {
-  const statuses = [
-    'pending',
-    'planning',
-    'in_progress',
-    'completed',
-    'failed',
-    'deleted',
-  ] as const;
+  const statuses = ['pending', 'planning', 'in_progress', 'completed'] as const;
   const columnWidth = Math.max(
     14,
     Math.floor(Math.max(84, width) / statuses.length),
@@ -100,11 +93,6 @@ export function renderBoard(
       '',
       `Selected #${task.id}: ${plain(task.subject)} · owner ${task.owner ?? 'unassigned'} · blocked by ${task.blockedBy.join(', ') || 'none'}`,
       plain(task.description),
-      ...(task.worktree?.binding
-        ? [
-            `Branch ${plain(task.worktree.binding.branch)} · ${plain(task.worktree.binding.path)}`,
-          ]
-        : []),
     );
   lines.push(
     '',

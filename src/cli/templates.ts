@@ -4,21 +4,17 @@ import { Config } from '../core/config.js';
 import { Lifecycle } from '../core/lifecycle.js';
 import { Store } from '../core/store.js';
 import { HerdrClient } from '../herdr/index.js';
-import { readIdentity, readSelectedIdentity } from './identity.js';
+import { readIdentity } from './identity.js';
+import { group, printer, teamContext, type Output } from './context.js';
 export function installTemplateCommands(
   program: Command,
   env: NodeJS.ProcessEnv,
-  output: (text: string) => void,
+  output: Output,
 ) {
-  const group = program.commands.find((c) => c.name() === 'team')!;
-  const replace = (name: string, usage: string) => {
-    const old = group.commands.find((c) => c.name() === name)!;
-    if (old)
-      (group.commands as Command[]).splice(group.commands.indexOf(old), 1);
-    return group.command(usage);
-  };
-  const print = (v: unknown) => output(JSON.stringify(v, null, 2) + '\n');
-  const start = replace('start', 'start <template>')
+  const team = group(program, 'team');
+  const print = printer(output);
+  const start = team
+    .command('start <template>')
     .option('--name <name>', 'runtime team name')
     .option('--lead <name>', 'lead name')
     .option(
@@ -47,23 +43,15 @@ export function installTemplateCommands(
     (start as Command & { _storeId?: string })._storeId = db.id;
     print(team);
   });
-  const list = replace('templates', 'templates').description(
-    'List team templates: project, global, then built-in',
-  );
+  const list = team
+    .command('templates')
+    .description('List team templates: project, global, then built-in');
   list.action(() => print(new Config(process.cwd(), env).catalog()));
-  const save = replace('save', 'save <template>').option(
-    '--scope <scope>',
-    'project or global',
-    'project',
-  );
+  const save = team
+    .command('save <template>')
+    .option('--scope <scope>', 'project or global', 'project');
   save.action((template: string) => {
-    const identity = readSelectedIdentity(
-      env,
-      save.optsWithGlobals<{ team?: string }>().team,
-    );
-    if (!identity.home || !identity.teamId) throw new Error('Select a team');
-    const db = new Store(identity.home, identity.teamId);
-    db.authorize(identity.agent, true, identity.paneId);
+    const { db } = teamContext(save, env, true);
     print(
       new Config(db.config().repository_dir ?? process.cwd(), env).save(
         db,

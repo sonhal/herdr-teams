@@ -1,5 +1,5 @@
 /** Wire shapes verified against herdr v0.9.5 src/api/schema/{agents,panes,response}.rs.
- * Only the fields used by M1–M2 are modeled; upstream may add more fields.
+ * Only the fields herdr-teams reads are modeled; upstream may add more fields.
  */
 export type AgentStatus = 'idle' | 'working' | 'blocked' | 'done' | 'unknown';
 

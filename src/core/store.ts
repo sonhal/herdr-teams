@@ -21,17 +21,7 @@ export interface Team {
   auto_claim?: boolean;
   repository_dir?: string;
   plan_approval?: 'lead' | 'none';
-  hooks?: {
-    failure_action?: 'warn' | 'reopen' | 'followup' | 'reopen_followup';
-    max_reopens?: number;
-    followup_owner?: 'member' | 'lead' | 'none';
-    timeout_seconds?: number;
-  };
-  worktree_requests?: 'lead' | 'auto';
-  requests?: Record<
-    string,
-    { member: string; reason: string; task?: string; approved: boolean }
-  >;
+  hooks?: { timeout_seconds?: number };
   workspace_id?: string;
   lead_pane_id?: string;
   /** HERDR_SOCKET_PATH of the herdr session that runs the team. */
@@ -67,23 +57,20 @@ export function agentName(team: Team, member: string): string {
   return team.details?.[member]?.agent_name ?? member;
 }
 
-/** herdr 0.9.5 caps agent names at 32 characters. */
+/**
+ * herdr 0.9.5 caps agent names at 32 characters. The suffix keeps trimmed names
+ * distinct, and display names may repeat across instances.
+ */
 export function newAgentName(
   team: string,
   member: string,
   instanceId: string,
 ): string {
-  const name = `${team}-${member}`;
-  if (name.length > 32)
-    throw new Error(
-      `herdr agent name ${name} exceeds 32 characters; use a shorter team or member name`,
-    );
-  // Names are session-wide in herdr, while display names can repeat.
   const suffix = createHash('sha256')
     .update(JSON.stringify([instanceId, member]))
     .digest('hex')
     .slice(0, 4);
-  return `${name.slice(0, 27)}-${suffix}`;
+  return `${`${team}-${member}`.slice(0, 27)}-${suffix}`;
 }
 
 export interface Member {
@@ -121,8 +108,7 @@ export interface Task {
   id: string;
   subject: string;
   description: string;
-  status:
-    'pending' | 'planning' | 'in_progress' | 'completed' | 'failed' | 'deleted';
+  status: 'pending' | 'planning' | 'in_progress' | 'completed';
   owner: string | null;
   gate?: string;
   plan_mode?: boolean;
@@ -133,13 +119,10 @@ export interface Task {
     verdict: 'pending' | 'approved' | 'rejected';
     feedback: string | null;
   };
-  worktree?: { required?: boolean; binding?: Worktree };
   blockedBy: string[];
   blocks: string[];
   result: string | null;
   reopens: number;
-  /** The task whose hook failure created this follow-up. */
-  followup_of?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -212,33 +195,36 @@ export class Store {
   ) {
     this.root = join(home, 'teams', id);
   }
-  /** Historical alias for {@link id}; many callers read db.team. */
-  get team(): string {
-    return this.id;
-  }
   /** Display name from config.json. */
   get name(): string {
     return this.config().name;
   }
+  /**
+   * A lock is a directory, since mkdir is atomic; owner.json names the process
+   * holding it. Returns false while another process holds it.
+   */
+  private tryLock(path: string): boolean {
+    try {
+      mkdirSync(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      this.recoverLock(path);
+      return false;
+    }
+    atomic(join(path, 'owner.json'), { pid: process.pid });
+    return true;
+  }
   private lock<T>(operation: () => T): T {
     const lock = join(this.root, 'locks', 'store');
     const deadline = Date.now() + 10000;
-    for (;;) {
-      try {
-        mkdirSync(lock);
-        break;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-        this.recoverLock(lock);
-        if (Date.now() >= deadline)
-          throw new Error(
-            'Team store is locked; retry or inspect locks/store for an interrupted writer',
-          );
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-      }
+    while (!this.tryLock(lock)) {
+      if (Date.now() >= deadline)
+        throw new Error(
+          'Team store is locked; retry or inspect locks/store for an interrupted writer',
+        );
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
     }
     try {
-      atomic(join(lock, 'owner.json'), { pid: process.pid });
       return operation();
     } finally {
       rmSync(lock, { recursive: true, force: true });
@@ -272,24 +258,19 @@ export class Store {
       rmSync(recovery, { recursive: true, force: true });
     }
   }
-  async exclusive<T>(key: string, operation: () => Promise<T>): Promise<T> {
-    name(key);
-    const path = join(this.root, 'locks', key);
+  /** Serializes a long-running operation without holding the store lock. */
+  async exclusive<T>(
+    key: string,
+    operation: () => Promise<T>,
+    busy = `Operation ${key} is busy; retry`,
+  ): Promise<T> {
+    const path = join(this.root, 'locks', name(key));
     const deadline = Date.now() + 10000;
-    for (;;) {
-      try {
-        mkdirSync(path);
-        break;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-        this.recoverLock(path);
-        if (Date.now() >= deadline)
-          throw new Error(`Operation ${key} is busy; retry`);
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
+    while (!this.tryLock(path)) {
+      if (Date.now() >= deadline) throw new Error(busy);
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
     try {
-      atomic(join(path, 'owner.json'), { pid: process.pid });
       return await operation();
     } finally {
       rmSync(path, { recursive: true, force: true });
@@ -373,18 +354,6 @@ export class Store {
           `Team ${team.name} belongs to another herdr session (${team.herdr_socket})`,
         );
       team.herdr_socket = socket;
-    });
-  }
-  addMember(member: string): Team {
-    name(member);
-    return this.lock(() => {
-      const config = this.config();
-      if (config.members.includes(member))
-        throw new Error('Member already exists');
-      config.members.push(member);
-      atomic(join(this.root, 'config.json'), config);
-      this.event('member.added', { member });
-      return config;
     });
   }
   create(lead: string, displayName: string): Team {
@@ -475,12 +444,7 @@ export class Store {
   add(
     subject: string,
     description = '',
-    options: {
-      gate?: string;
-      planMode?: boolean;
-      worktree?: boolean;
-      followupOf?: string;
-    } = {},
+    options: { gate?: string; planMode?: boolean } = {},
   ): Task {
     if (!subject.trim()) throw new Error('Task subject is required');
     checkTaskText('subject', subject);
@@ -496,8 +460,6 @@ export class Store {
         description,
         ...(options.gate ? { gate: options.gate } : {}),
         ...(options.planMode ? { plan_mode: true } : {}),
-        ...(options.worktree ? { worktree: { required: true } } : {}),
-        ...(options.followupOf ? { followup_of: options.followupOf } : {}),
         status: 'pending',
         owner: null,
         blockedBy: [],

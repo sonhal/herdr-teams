@@ -1,3 +1,4 @@
+import { addMember } from './helpers/members.js';
 import {
   appendFileSync,
   chmodSync,
@@ -31,7 +32,7 @@ function setup() {
   homes.push(home);
   const db = new Store(home, randomUUID());
   db.create('lead', 'demo');
-  db.addMember('alice');
+  addMember(db, 'alice');
   return db;
 }
 const idle = { ...agent, completion_seq: 0 };
@@ -203,7 +204,7 @@ it('startup hooks flush mail without a team identity', async () => {
 
 it('supports valid member names that match object prototype properties', async () => {
   const db = setup();
-  db.addMember('constructor');
+  addMember(db, 'constructor');
   const recipient = { ...idle, name: 'constructor' };
   db.send('lead', 'constructor', 'valid name');
   const fake = await fakeHerdr([
@@ -312,7 +313,7 @@ it('delivers lead mail to whichever agent runs in the lead pane', async () => {
     'session-a.sock',
   );
   homes.push(db.home);
-  db.addMember('alice');
+  addMember(db, 'alice');
   db.send('alice', 'lead', 'for the lead');
   const lead = { ...idle, name: 'renamed-by-user' };
   const fake = await fakeHerdr([
@@ -340,7 +341,7 @@ it('rejects message bodies that cannot be passed as one argument', () => {
 
 it('bounds each prompt and keeps delivering to other members', async () => {
   const db = setup();
-  db.addMember('bob');
+  addMember(db, 'bob');
   // Mail written before the size limit existed.
   appendFileSync(
     join(db.root, 'inboxes', 'alice.jsonl'),
@@ -696,7 +697,7 @@ it('recovers an abandoned delivery lease and completes the pending pass', async 
   const db = setup();
   const lease = join(db.root, 'locks', 'delivery');
   mkdirSync(lease);
-  writeFileSync(join(lease, 'pid'), '99999999');
+  writeFileSync(join(lease, 'owner.json'), JSON.stringify({ pid: 99999999 }));
   const old = new Date(Date.now() - 61000);
   utimesSync(lease, old, old);
   db.send('lead', 'alice', 'after recovery');

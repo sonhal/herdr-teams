@@ -13,7 +13,6 @@ export class Tasks {
       description?: string;
       gate?: string;
       planMode?: boolean;
-      worktree?: boolean;
     } = {},
   ) {
     // Checked before the hook, which receives them in its environment.

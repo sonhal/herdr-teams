@@ -1,7 +1,5 @@
-import { mkdir, rm, readFile, writeFile, stat } from 'node:fs/promises';
-import { join } from 'node:path';
 import { Hooks } from '../core/hooks.js';
-import { Worktrees, worktreeStatus } from '../core/worktrees.js';
+import { worktreeStatus } from '../core/worktrees.js';
 import { syncMembers } from './lifecycle.js';
 import { each } from './each.js';
 import {
@@ -59,238 +57,226 @@ export function liveMember(
   );
 }
 
-/** Hooks and reconciliation share a lease; never hold the store lock across I/O. */
+/** Hooks and commands share one delivery lease; never hold the store lock across I/O. */
 export async function reconcile(
   db: Store,
   client: HerdrClient,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
-  const lease = join(db.root, 'locks', 'delivery');
-  const deadline = Date.now() + 10000;
-  while (!(await acquireDeliveryLease(lease, db))) {
-    if (Date.now() >= deadline) throw new Error('Delivery is busy; retry');
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
   const failures: unknown[] = [];
   const idleHooks: [string, Task | undefined][] = [];
-  try {
-    await writeFile(join(lease, 'pid'), String(process.pid));
-    let team = db.config();
-    const state = db.deliveryState();
-    const agents = (await client.agentList()).agents;
-    await syncMembers(db, client, agents).catch((error: unknown) =>
-      failures.push(error),
-    );
-    team = db.config();
-    const members = new Map<string, AgentInfo>();
-    for (const member of team.members) {
-      const details = team.details?.[member];
-      if (
-        details?.ended ||
-        details?.shutdown_accepted ||
-        details?.state === 'starting'
-      )
-        continue;
-      const agent = liveMember(team, member, agents);
-      if (agent) members.set(member, agent);
-    }
-    state.incarnations ??= {};
-    state.interrupts ??= {};
-    state.report_messages ??= {};
-    state.report_boards ??= {};
-    for (const [member, agent] of members) {
-      const incarnation = JSON.stringify([
-        agent.pane_id,
-        team.details?.[member]?.started_at,
-        agent.agent_session,
-      ]);
-      if (state.incarnations[member] !== incarnation) {
-        state.incarnations[member] = incarnation;
-        delete state.reports[member];
-        delete state.report_boards[member];
-        if (state.idle_hooks) delete state.idle_hooks[member];
-        if (state.blocked) delete state.blocked[member];
-        delete state.interrupts[member];
-      }
-    }
-    state.blocked ??= {};
-    for (const [member, agent] of members) {
-      if (agent.agent_status !== 'blocked') {
-        delete state.blocked[member];
-        continue;
-      }
-      if (member === team.lead || state.blocked[member]) continue;
-      const inbox = db.inbox(member);
-      if (!inbox.length || inbox.at(-1)!.id === state.cursors[member]) continue;
-      db.send(
-        member,
-        team.lead,
-        `${member} is blocked; inbox delivery is waiting for permission or an answer.`,
-        false,
-        'advisory',
+  await db.exclusive(
+    'delivery',
+    async () => {
+      let team = db.config();
+      const state = db.deliveryState();
+      const agents = (await client.agentList()).agents;
+      await syncMembers(db, client, agents).catch((error: unknown) =>
+        failures.push(error),
       );
-      state.blocked[member] = true;
-    }
-    db.saveDeliveryState(state);
-    // Reports run before delivery so the lead receives them in this batch.
-    await each(members, async (member, agent) => {
-      if (
-        member === team.lead ||
-        !['idle', 'done'].includes(agent.agent_status)
-      )
-        return;
-      const seq = agent.completion_seq ?? 0;
-      if (seq <= (state.reports[member] ?? 0)) return;
-      state.idle_hooks ??= {};
-      if (seq > (state.idle_hooks[member] ?? 0)) {
-        idleHooks.push([
-          member,
-          db
-            .tasks()
-            .find((t) => t.owner === member && t.status === 'in_progress'),
-        ]);
-        state.idle_hooks[member] = seq;
-        db.saveDeliveryState(state);
-      }
-
-      const tasks = db
-        .tasks()
-        .filter((t) => t.owner === member)
-        .map((t) => `#${t.id} ${t.status}: ${t.subject}`)
-        .join('\n');
-      const worktree = team.details?.[member]?.worktree;
-      const status = worktree ? JSON.stringify(worktreeStatus(worktree)) : '';
-      const board = `${tasks}\n${status}`;
-      const last = db
-        .inbox(team.lead)
-        .filter(
-          (m) =>
-            m.from === member &&
-            !m.kind &&
-            Date.parse(m.createdAt) >=
-              (team.details?.[member]?.started_at ?? 0),
+      team = db.config();
+      const members = new Map<string, AgentInfo>();
+      for (const member of team.members) {
+        const details = team.details?.[member];
+        if (
+          details?.ended ||
+          details?.shutdown_accepted ||
+          details?.state === 'starting'
         )
-        .at(-1);
-      const messaged = last && last.id !== state.report_messages![member];
-      // A message the teammate sent this turn already reaches the lead; the
-      // report only adds what changed on the board, or the pane when it said
-      // nothing.
-      if (!messaged || board !== (state.report_boards![member] ?? '\n')) {
-        const output = messaged
-          ? 'Its message to you is above.'
-          : await client.paneRead(agent.pane_id, {
-              source: 'recent-unwrapped',
-              lines: 20,
-            });
+          continue;
+        const agent = liveMember(team, member, agents);
+        if (agent) members.set(member, agent);
+      }
+      state.incarnations ??= {};
+      state.interrupts ??= {};
+      state.report_messages ??= {};
+      state.report_boards ??= {};
+      for (const [member, agent] of members) {
+        const incarnation = JSON.stringify([
+          agent.pane_id,
+          team.details?.[member]?.started_at,
+          agent.agent_session,
+        ]);
+        if (state.incarnations[member] !== incarnation) {
+          state.incarnations[member] = incarnation;
+          delete state.reports[member];
+          delete state.report_boards[member];
+          if (state.idle_hooks) delete state.idle_hooks[member];
+          if (state.blocked) delete state.blocked[member];
+          delete state.interrupts[member];
+        }
+      }
+      state.blocked ??= {};
+      for (const [member, agent] of members) {
+        if (agent.agent_status !== 'blocked') {
+          delete state.blocked[member];
+          continue;
+        }
+        if (member === team.lead || state.blocked[member]) continue;
+        const inbox = db.inbox(member);
+        if (!inbox.length || inbox.at(-1)!.id === state.cursors[member])
+          continue;
         db.send(
           member,
           team.lead,
-          clip(`Turn completed.\n${tasks}\n${output}\n${status}`),
+          `${member} is blocked; inbox delivery is waiting for permission or an answer.`,
           false,
-          'report',
+          'advisory',
         );
+        state.blocked[member] = true;
       }
-      state.reports[member] = seq;
-      state.report_boards![member] = board;
-      if (last) state.report_messages![member] = last.id;
       db.saveDeliveryState(state);
-    }).catch((error: unknown) => failures.push(error));
-    await each(members, async (member, agent) => {
-      if (!['idle', 'done', 'working'].includes(agent.agent_status)) return;
-      const inbox = db.inbox(member);
-      const cursor = state.cursors[member];
-      const index =
-        cursor === undefined ? -1 : inbox.findIndex((m) => m.id === cursor);
-      if (cursor !== undefined && index === -1)
-        throw new Error(`Unknown inbox cursor for ${member}`);
-      state.acknowledged ??= {};
-      const acknowledged = new Set(state.acknowledged[member] ?? []);
-      let pending = inbox
-        .slice(index + 1)
-        .filter((m) => !acknowledged.has(m.id));
-      const steers = team.details?.[member]?.kind !== 'codex';
-      if (agent.agent_status === 'working') {
-        pending = pending.filter((m) => m.urgent);
+      // Reports run before delivery so the lead receives them in this batch.
+      await each(members, async (member, agent) => {
         if (
-          steers &&
-          (state.interrupts![member] ||
-            pending.some((m) => m.id === state.steered![member]))
+          member === team.lead ||
+          !['idle', 'done'].includes(agent.agent_status)
         )
           return;
-      }
-      if (
-        agent.agent_status !== 'working' &&
-        member !== team.lead &&
-        team.auto_claim !== false &&
-        team.details?.[member]?.auto_claim !== false
-      ) {
-        const task = db.autoClaim(member, pending.length > 0);
-        if (task) {
-          if (task.worktree?.required && !task.worktree.binding) {
-            try {
-              await new Worktrees(db, client).create(task.id);
-            } catch (error) {
-              db.change(task.id, 'release', team.lead);
-              throw error;
-            }
-          }
-          pending = [
-            ...pending,
-            db.send(
-              team.lead,
-              member,
-              `You claimed task #${task.id}: ${task.subject}\n${clip(task.description, MAX_MESSAGE_BYTES / 2)}\n${task.plan_mode || team.details?.[member]?.plan_mode ? 'Before editing, submit a plan: herdr-teams plan submit ' + task.id + ' --file plan.md. Follow the team plan approval policy.\n' : ''}${db.task(task.id).worktree?.binding ? `Work in ${JSON.stringify(db.task(task.id).worktree!.binding!.path)}` : ''}`,
-            ),
-          ];
+        const seq = agent.completion_seq ?? 0;
+        if (seq <= (state.reports[member] ?? 0)) return;
+        state.idle_hooks ??= {};
+        if (seq > (state.idle_hooks[member] ?? 0)) {
+          idleHooks.push([
+            member,
+            db
+              .tasks()
+              .find((t) => t.owner === member && t.status === 'in_progress'),
+          ]);
+          state.idle_hooks[member] = seq;
+          db.saveDeliveryState(state);
         }
-      }
-      if (!pending.length) return;
-      // Recheck after reports and disk operations; herdr also rejects blocked agents.
-      const current = (await client.agentGet(agent.pane_id)).agent;
-      if (current.pane_id !== agent.pane_id || current.name !== agent.name)
-        return;
-      if (
-        current.agent_status === 'blocked' ||
-        current.agent_status === 'unknown'
-      )
-        return;
-      if (current.agent_status === 'working') {
-        pending = pending.filter((m) => m.urgent);
-        if (!pending.length) return;
-        if (steers) {
-          // Saved first so a retried reconcile doesn't press Esc again.
+
+        const tasks = db
+          .tasks()
+          .filter((t) => t.owner === member)
+          .map((t) => `#${t.id} ${t.status}: ${t.subject}`)
+          .join('\n');
+        const worktree = team.details?.[member]?.worktree;
+        const status = worktree ? JSON.stringify(worktreeStatus(worktree)) : '';
+        const board = `${tasks}\n${status}`;
+        const last = db
+          .inbox(team.lead)
+          .filter(
+            (m) =>
+              m.from === member &&
+              !m.kind &&
+              Date.parse(m.createdAt) >=
+                (team.details?.[member]?.started_at ?? 0),
+          )
+          .at(-1);
+        const messaged = last && last.id !== state.report_messages![member];
+        // A message the teammate sent this turn already reaches the lead; the
+        // report only adds what changed on the board, or the pane when it said
+        // nothing.
+        if (!messaged || board !== (state.report_boards![member] ?? '\n')) {
+          const output = messaged
+            ? 'Its message to you is above.'
+            : await client.paneRead(agent.pane_id, {
+                source: 'recent-unwrapped',
+                lines: 20,
+              });
+          db.send(
+            member,
+            team.lead,
+            clip(`Turn completed.\n${tasks}\n${output}\n${status}`),
+            false,
+            'report',
+          );
+        }
+        state.reports[member] = seq;
+        state.report_boards![member] = board;
+        if (last) state.report_messages![member] = last.id;
+        db.saveDeliveryState(state);
+      }).catch((error: unknown) => failures.push(error));
+      await each(members, async (member, agent) => {
+        if (!['idle', 'done', 'working'].includes(agent.agent_status)) return;
+        const inbox = db.inbox(member);
+        const cursor = state.cursors[member];
+        const index =
+          cursor === undefined ? -1 : inbox.findIndex((m) => m.id === cursor);
+        if (cursor !== undefined && index === -1)
+          throw new Error(`Unknown inbox cursor for ${member}`);
+        state.acknowledged ??= {};
+        const acknowledged = new Set(state.acknowledged[member] ?? []);
+        let pending = inbox
+          .slice(index + 1)
+          .filter((m) => !acknowledged.has(m.id));
+        const steers = team.details?.[member]?.kind !== 'codex';
+        if (agent.agent_status === 'working') {
+          pending = pending.filter((m) => m.urgent);
           if (
-            state.interrupts![member] ||
-            pending.some((m) => m.id === state.steered![member])
+            steers &&
+            (state.interrupts![member] ||
+              pending.some((m) => m.id === state.steered![member]))
           )
             return;
-          state.interrupts![member] = true;
-          state.steered![member] = pending.at(-1)!.id;
-          db.saveDeliveryState(state);
-          await client.sendKeys(agent.pane_id, 'esc');
-          return;
         }
-      }
-      // The rest waits for the next idle turn.
-      pending = batch(team.name, pending);
-      await client.agentPrompt(
-        agent.pane_id,
-        pending.map((m) => wrap(team.name, m)).join('\n\n'),
-      );
-      delete state.interrupts![member];
-      delete state.steered![member];
-      for (const message of pending) acknowledged.add(message.id);
-      for (const message of db.inbox(member).slice(index + 1)) {
-        if (!acknowledged.has(message.id)) break;
-        state.cursors[member] = message.id;
-        acknowledged.delete(message.id);
-      }
-      state.acknowledged[member] = [...acknowledged];
-      db.saveDeliveryState(state);
-    }).catch((error: unknown) => failures.push(error));
-  } finally {
-    await rm(lease, { recursive: true, force: true });
-  }
+        if (
+          agent.agent_status !== 'working' &&
+          member !== team.lead &&
+          team.auto_claim !== false &&
+          team.details?.[member]?.auto_claim !== false
+        ) {
+          const task = db.autoClaim(member, pending.length > 0);
+          if (task) {
+            pending = [
+              ...pending,
+              db.send(
+                team.lead,
+                member,
+                `You claimed task #${task.id}: ${task.subject}\n${clip(task.description, MAX_MESSAGE_BYTES / 2)}\n${task.plan_mode || team.details?.[member]?.plan_mode ? 'Before editing, submit a plan: herdr-teams plan submit ' + task.id + ' --file plan.md. Follow the team plan approval policy.\n' : ''}`,
+              ),
+            ];
+          }
+        }
+        if (!pending.length) return;
+        // Recheck after reports and disk operations; herdr also rejects blocked agents.
+        const current = (await client.agentGet(agent.pane_id)).agent;
+        if (current.pane_id !== agent.pane_id || current.name !== agent.name)
+          return;
+        if (
+          current.agent_status === 'blocked' ||
+          current.agent_status === 'unknown'
+        )
+          return;
+        if (current.agent_status === 'working') {
+          pending = pending.filter((m) => m.urgent);
+          if (!pending.length) return;
+          if (steers) {
+            // Saved first so a retried reconcile doesn't press Esc again.
+            if (
+              state.interrupts![member] ||
+              pending.some((m) => m.id === state.steered![member])
+            )
+              return;
+            state.interrupts![member] = true;
+            state.steered![member] = pending.at(-1)!.id;
+            db.saveDeliveryState(state);
+            await client.sendKeys(agent.pane_id, 'esc');
+            return;
+          }
+        }
+        // The rest waits for the next idle turn.
+        pending = batch(team.name, pending);
+        await client.agentPrompt(
+          agent.pane_id,
+          pending.map((m) => wrap(team.name, m)).join('\n\n'),
+        );
+        delete state.interrupts![member];
+        delete state.steered![member];
+        for (const message of pending) acknowledged.add(message.id);
+        for (const message of db.inbox(member).slice(index + 1)) {
+          if (!acknowledged.has(message.id)) break;
+          state.cursors[member] = message.id;
+          acknowledged.delete(message.id);
+        }
+        state.acknowledged[member] = [...acknowledged];
+        db.saveDeliveryState(state);
+      }).catch((error: unknown) => failures.push(error));
+    },
+    'Delivery is busy; retry',
+  );
   // Hooks may run for minutes; under the lease they would stall every delivery.
   const hooks = new Hooks(db, env);
   await each(idleHooks, async (member, task) => {
@@ -299,41 +285,4 @@ export async function reconcile(
   }).catch((error: unknown) => failures.push(error));
   if (failures.length)
     throw new Error(failures.map((e) => (e as Error).message).join('; '));
-}
-
-async function acquireDeliveryLease(
-  lease: string,
-  db: Store,
-): Promise<boolean> {
-  try {
-    await mkdir(lease);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-    const recovery = join(db.root, 'locks', 'delivery-recovery');
-    try {
-      await mkdir(recovery);
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code === 'EEXIST') return false;
-      throw cause;
-    }
-    // A killed hook must not prevent delivery after a restart.
-    try {
-      if (Date.now() - (await stat(lease)).mtimeMs < 60000) return false;
-      const pid = Number(await readFile(join(lease, 'pid'), 'utf8'));
-      if (!Number.isSafeInteger(pid) || pid <= 0) return false;
-      try {
-        process.kill(pid, 0);
-        return false;
-      } catch (cause) {
-        if ((cause as NodeJS.ErrnoException).code !== 'ESRCH') return false;
-      }
-      await rm(lease, { recursive: true, force: true });
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause;
-    } finally {
-      await rm(recovery, { recursive: true, force: true });
-    }
-    return false;
-  }
 }

@@ -292,7 +292,7 @@ state is `failed-to-launch`. The lead gets the launch arguments and the last
 | `report "…"` | the lead | when idle; also how a teammate asks for help |
 
 Messages can also be structured, for example a plan submission, plan verdict,
-shutdown request, worktree request or advisory. Structured messages travel
+shutdown request or advisory. Structured messages travel
 through the same inboxes.
 
 ### 7.2 Delivery
@@ -399,27 +399,23 @@ run, using its original calling convention.
 
 A task can carry `gate: "<command>"`, for example `npm test`. It runs before
 the `task_completed` hook, has the same exit-code meaning, and runs in the
-task's worktree.
+owner's worktree if it has one.
 
-### 9.3 Failure policy
+### 9.3 Failures
 
-This is a team setting (`hooks:` in the template):
-
-| Setting | Values | Default |
-|---|---|---|
-| `failure_action` | `warn`, `reopen`, `followup`, `reopen_followup` | `warn` |
-| `max_reopens` | integer (0 disables auto-reopen) | `3` |
-| `followup_owner` | `member`, `lead`, `none` | `member` |
+Exit 2 is a deliberate rejection: its feedback goes to the actor. Any other
+failure keeps the task open, sends the output to the actor and warns the lead.
+The only team setting is `hooks.timeout_seconds` (default 600).
 
 ## 10. Git worktrees
 
 Worktrees give parallel writers isolated checkouts. They isolate files, not
-processes or permissions.
+processes or permissions. Most teams share the lead's checkout; a worktree is
+worth its merge step only for parallel writers to the same files.
 
 ### 10.1 Modes
 
-Set per teammate (in the agent definition, template or spawn flags); a task
-can additionally require one:
+Set per teammate in the agent definition, template or spawn flags:
 
 | Mode | Behaviour |
 |---|---|
@@ -428,30 +424,25 @@ can additionally require one:
 
 ### 10.2 Ownership
 
-The lead manages worktrees:
-
-- `herdr-teams worktree create <member|task> [--branch B] [--base REF]`.
-- A teammate can ask with `herdr-teams worktree request --reason "…"`. The
-  request goes to the lead, who runs `herdr-teams worktree approve <id>`.
-  The team setting `worktree_requests: auto` approves requests immediately.
+Only `spawn --worktree dedicated` creates a worktree. The lead merges and
+removes it.
 
 ### 10.3 Creation
 
-1. Resolve the base to an exact commit (default: the lead's `HEAD`).
+1. Resolve the lead's `HEAD` to an exact commit.
    Uncommitted changes in the lead's checkout are not carried over, and the
    lead is warned.
-2. Name the branch `team/<team>/<member>[-<task>]`. Existing branches are
-   refused.
+2. Name the branch `team/<team>/<member>`. Existing branches are refused.
 3. Run `herdr worktree create --cwd <repo> --branch <b> --base <sha>
    --label "<team>:<member>" --no-focus`. This creates the checkout and
    opens it as a herdr workspace grouped with the repository.
-4. A new teammate starts in the workspace's root pane. An existing one is
-   moved there with `herdr pane move`, which keeps its session.
-5. Record the path, branch and base commit on the member and the task.
+4. The teammate starts in a split of the workspace's root pane, which then
+   closes.
+5. Record the path, branch and base commit on the member.
 
 ### 10.4 Completion report
 
-When a task finishes in a worktree, the lead's report includes the path,
+When a teammate with a worktree finishes a turn, the lead's report includes the path,
 branch, base and head commits, commits ahead, changed files, and whether the
 checkout is clean, dirty or conflicted.
 
@@ -591,11 +582,8 @@ auth-squad:
   lead: { kind: claude, model: opus }
   defaults: { kind: claude, thinking: medium, worktree: shared, auto_claim: true }
   plan_approval: lead           # lead | none
-  worktree_requests: lead       # lead | auto
   hooks:
-    failure_action: reopen_followup
-    max_reopens: 2
-    followup_owner: member
+    timeout_seconds: 600
   members:
     - name: alice
       agent: builder
@@ -637,7 +625,7 @@ Unknown frontmatter keys are ignored.
 | Tasks | `task add`, `task list`, `task show`, `task claim`, `task assign`, `task release`, `task update`, `task complete`, `task dep add\|rm` |
 | Messages | `msg send [--urgent]`, `broadcast`, `report`, `inbox` |
 | Plans | `plan submit`, `plan approve`, `plan reject` |
-| Worktrees | `worktree create\|request\|approve\|status\|diff\|merge\|remove` |
+| Worktrees | `worktree status\|diff\|merge\|remove`, `cleanup` |
 | Panes | `board` |
 
 Every command accepts `--team` (defaulting to `HERDR_TEAMS_TEAM`) and `--json`.
@@ -709,10 +697,10 @@ version herdr reports as installed.
 | M3 | Delivery: event hooks, batched delivery, reports to the lead, auto-claim, reconciliation | An idle teammate receives a message within ~1 s, with no polling |
 | M4 | Team control: state log, end states, peek, steer, interrupt, release | An interrupted teammate continues with its context |
 | M5 | Worktrees: modes, requests, creation and move, completion report, status/diff/merge, guarded removal, cleanup | Two writers in parallel worktrees; the lead merges both |
-| M6 | Plan mode and quality gates: plan submit/approve/reject, hooks with exit-2 semantics, per-task gates, failure policy | A failing `npm test` gate keeps the task open and tells the owner why |
+| M6 | Plan mode and quality gates: plan submit/approve/reject, hooks with exit-2 semantics, per-task gates | A failing `npm test` gate keeps the task open and tells the owner why |
 | M7 | Templates and definitions: `teams.yaml`, agent definitions, `team start`, `team save` | Save a team, start it again, get the same team |
 | M8 | Board pane and sidebar labels | The board works as the only control surface |
-| M9 | MCP front-end, more adapters, Windows check, docs, marketplace listing | Installable with `herdr plugin install sonhal/herdr-teams` |
+| M9 | More adapters, Windows check, docs, marketplace listing | Installable with `herdr plugin install sonhal/herdr-teams` |
 
 ### 17.2 Testing
 

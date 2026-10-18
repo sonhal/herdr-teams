@@ -222,7 +222,7 @@ it('done asks idle members to exit and closes their panes once exit is observed'
       env: {
         ...fake.env,
         HERDR_TEAMS_HOME: db.home,
-        HERDR_TEAMS_TEAM: db.team,
+        HERDR_TEAMS_TEAM: db.id,
       },
       stdout: () => {},
       stderr: () => {},
@@ -266,7 +266,7 @@ it('done --force continues past a missing pane and closes the others', async () 
       env: {
         ...fake.env,
         HERDR_TEAMS_HOME: db.home,
-        HERDR_TEAMS_TEAM: db.team,
+        HERDR_TEAMS_TEAM: db.id,
       },
       stdout: () => {},
       stderr: () => {},
@@ -429,7 +429,7 @@ it('done --force attempts other members after an unexpected close failure', asyn
       env: {
         ...fake.env,
         HERDR_TEAMS_HOME: db.home,
-        HERDR_TEAMS_TEAM: db.team,
+        HERDR_TEAMS_TEAM: db.id,
       },
       stdout: () => {},
       stderr: () => {},

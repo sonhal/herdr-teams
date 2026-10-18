@@ -1,3 +1,4 @@
+import { addMember } from './helpers/members.js';
 import {
   chmodSync,
   mkdirSync,
@@ -23,7 +24,7 @@ function setup() {
   homes.push(home);
   const db = new Store(join(home, 'state'), randomUUID());
   db.create('lead', 'demo');
-  db.addMember('alice');
+  addMember(db, 'alice');
   db.updateTeam((t) => {
     t.repository_dir = home;
   });
@@ -122,26 +123,23 @@ it('passes stdin and identity and preserves the original pi hook argument', asyn
   ).toMatchObject({ status: 'completed', id: task.id });
   expect(readFileSync(join(home, 'pi-team'), 'utf8')).toBe(db.id);
 });
-it('caps reopen attempts and creates assigned follow-up tasks on hook failures', async () => {
+it('warns the lead about a failing gate but not about a deliberate rejection', async () => {
   const { db, tasks } = setup();
-  db.updateTeam((t) => {
-    t.hooks = {
-      failure_action: 'reopen_followup',
-      max_reopens: 1,
-      followup_owner: 'lead',
-    };
+  const failing = await tasks.add('lead', 'fails', { gate: 'exit 1' });
+  const rejected = await tasks.add('lead', 'rejected', {
+    gate: 'echo "add a test" >&2; exit 2',
   });
-  const task = await tasks.add('lead', 'fails', { gate: 'exit 1' });
-  db.change(task.id, 'claim', 'alice');
-  await expect(tasks.complete(task.id, 'alice')).rejects.toThrow();
-  await expect(tasks.complete(task.id, 'alice')).rejects.toThrow();
-  expect(db.task(task.id).reopens).toBe(1);
-  expect(
-    db
-      .tasks()
-      .slice(1)
-      .every((t) => t.owner === 'lead'),
-  ).toBe(true);
+  db.change(failing.id, 'claim', 'alice');
+  await expect(tasks.complete(failing.id, 'alice')).rejects.toThrow();
+  expect(db.inbox('lead').map((m) => m.kind)).toEqual(['advisory']);
+  db.change(failing.id, 'release', 'lead');
+  db.change(rejected.id, 'claim', 'alice');
+  await expect(tasks.complete(rejected.id, 'alice')).rejects.toThrow(
+    'add a test',
+  );
+  expect(db.inbox('lead')).toHaveLength(1);
+  expect(db.inbox('alice').at(-1)!.body).toContain('add a test');
+  expect(db.tasks().map((t) => t.status)).toEqual(['pending', 'in_progress']);
 });
 it('times out a hung hook and leaves the task open', async () => {
   const { db, tasks } = setup();
@@ -180,11 +178,8 @@ it('does not complete a task released while its gate was running', async () => {
   }
 });
 
-it('does not reopen a concurrently released task after a failing gate', async () => {
+it('keeps a task released while its failing gate ran released', async () => {
   const { db, tasks } = setup();
-  db.updateTeam((team) => {
-    team.hooks = { failure_action: 'reopen_followup' };
-  });
   const task = await tasks.add('lead', 'race failure', {
     gate: 'node -e "setTimeout(()=>process.exit(1),100)"',
   });
@@ -204,17 +199,6 @@ it('does not reopen a concurrently released task after a failing gate', async ()
   }
 });
 
-it('creates one follow-up per task however often its gate fails', async () => {
-  const { db, tasks } = setup();
-  db.updateTeam((team) => {
-    team.hooks = { failure_action: 'followup' };
-  });
-  const task = await tasks.add('lead', 'fails', { gate: 'exit 1' });
-  db.change(task.id, 'claim', 'alice');
-  for (let attempt = 0; attempt < 3; attempt++)
-    await expect(tasks.complete(task.id, 'alice')).rejects.toThrow();
-  expect(db.tasks().filter((t) => t.followup_of === task.id)).toHaveLength(1);
-});
 it('runs a gate for a task with the largest text it accepts', async () => {
   const { db, tasks } = setup();
   // Control characters grow sixfold as JSON, as in the hook environment.

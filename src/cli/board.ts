@@ -6,6 +6,7 @@ import { stripVTControlCharacters } from 'node:util';
 import { snapshot, renderBoard } from '../board/model.js';
 import { terminalBoard } from '../board/terminal.js';
 import { readSelectedIdentity } from './identity.js';
+import { group, teamContext, type Output } from './context.js';
 import { runCliAsync } from './index.js';
 import { Config } from '../core/config.js';
 import { HerdrClient } from '../herdr/index.js';
@@ -13,26 +14,10 @@ import { HerdrClient } from '../herdr/index.js';
 export function installBoardCommands(
   program: Command,
   env: NodeJS.ProcessEnv,
-  output: (text: string) => void,
+  output: Output,
 ) {
-  function replace(parent: Command, name: string, usage: string) {
-    const old = parent.commands.find((c) => c.name() === name)!;
-    if (old)
-      (parent.commands as Command[]).splice(parent.commands.indexOf(old), 1);
-    return parent.command(usage);
-  }
-  function context(command: Command) {
-    const identity = readSelectedIdentity(
-      env,
-      command.optsWithGlobals<{ team?: string }>().team,
-    );
-    if (!identity.home || !identity.teamId)
-      throw new Error('Set HERDR_TEAMS_HOME and select a team');
-    const db = new Store(identity.home, identity.teamId);
-    db.authorize(identity.agent, false, identity.paneId);
-    return db;
-  }
-  const status = replace(program, 'status', 'status [member]');
+  const context = (command: Command) => teamContext(command, env).db;
+  const status = program.command('status [member]');
   status.action((member?: string) => {
     const data = snapshot(context(status));
     if (member) {
@@ -47,10 +32,9 @@ export function installBoardCommands(
         : renderBoard(data),
     );
   });
-  const board = replace(program, 'board', 'board').option(
-    '--once',
-    'render one snapshot',
-  );
+  const board = program
+    .command('board')
+    .option('--once', 'render one snapshot');
   board.action(async () => {
     const db = context(board);
     if (board.optsWithGlobals<{ json?: boolean }>().json) {
@@ -65,7 +49,7 @@ export function installBoardCommands(
       db,
       async (args) => {
         let text = '';
-        const code = await runCliAsync(['--team', db.team, ...args], {
+        const code = await runCliAsync(['--team', db.id, ...args], {
           version: program.version() ?? '0.1.0',
           env: { ...env, HERDR_TEAMS_HOME: db.home },
           stdout: (s) => {
@@ -80,10 +64,7 @@ export function installBoardCommands(
       output,
     );
   });
-  const log = replace(program, 'log', 'log').option(
-    '--follow',
-    'follow new events',
-  );
+  const log = program.command('log').option('--follow', 'follow new events');
   log.action(async () => {
     const db = context(log);
     const path = join(db.root, 'events.jsonl');
@@ -113,27 +94,8 @@ export function installBoardCommands(
       process.removeListener('SIGTERM', stop);
     }
   });
-  const tasks = program.commands.find((c) => c.name() === 'task')!;
-  tasks
-    .command('reopen <id>')
-    .action((id: string, _flags: unknown, command: Command) => {
-      const db = context(command);
-      const identity = readSelectedIdentity(env);
-      db.authorize(identity.agent, true, identity.paneId);
-      const task = db.editTask(id, (t) => {
-        if (!['completed', 'failed', 'deleted'].includes(t.status))
-          throw new Error('Only a terminal task may be reopened');
-        t.status = 'pending';
-        t.result = null;
-        t.reopens++;
-        delete t.plan;
-      });
-      if (task.owner)
-        db.send(db.config().lead, task.owner, `Task #${id} reopened`);
-      output(JSON.stringify(task) + '\n');
-    });
-  const actions = program.commands.find((c) => c.name() === '_action')!;
-  const open = replace(actions, 'open-board', 'open-board');
+  const actions = group(program, '_action');
+  const open = actions.command('open-board');
   open.action(async () => {
     const identity = readSelectedIdentity(
       env,
@@ -173,7 +135,7 @@ export function installBoardCommands(
       'plugin_pane_opened',
     );
   });
-  const start = replace(actions, 'start-team', 'start-team [template]');
+  const start = actions.command('start-team [template]');
   start.action(async (template?: string) => {
     const catalog = new Config(process.cwd(), env).catalog();
     // Built-in templates are always present; only the user's own one is implied.

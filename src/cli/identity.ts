@@ -4,7 +4,7 @@ import { Store } from '../core/store.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/** PLAN §4.2–4.3: identity only; membership and authority checks arrive in M1–M2. */
+/** Who and where a command runs; Store.authorize decides what it may do. */
 export interface Identity {
   home: string | undefined;
   teamId: string | undefined;

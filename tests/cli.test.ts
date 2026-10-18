@@ -4,13 +4,13 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Store } from '../src/core/store.js';
 import { describe, expect, it } from 'vitest';
-import { createCli, runCli } from '../src/cli/index.js';
+import { createCli, runCliAsync } from '../src/cli/index.js';
 import { readIdentity, resolveTeamId } from '../src/cli/identity.js';
 
-function run(argv: string[], env: NodeJS.ProcessEnv = {}) {
+async function run(argv: string[], env: NodeJS.ProcessEnv = {}) {
   let stdout = '';
   let stderr = '';
-  const exitCode = runCli(argv, {
+  const exitCode = await runCliAsync(argv, {
     version: '0.1.0',
     env,
     stdout: (text) => {
@@ -26,8 +26,8 @@ function run(argv: string[], env: NodeJS.ProcessEnv = {}) {
 describe('CLI', () => {
   it.each([{ argv: [] }, { argv: ['--help'] }])(
     'prints help for %j without executing a command',
-    ({ argv }) => {
-      const result = run(argv);
+    async ({ argv }) => {
+      const result = await run(argv);
       expect(result.exitCode).toBe(0);
       expect(result.stderr).toBe('');
       for (const command of [
@@ -51,8 +51,8 @@ describe('CLI', () => {
     expect(names).toContain('board');
     expect(names).toContain('cleanup');
   });
-  it('prints the supplied package version', () => {
-    expect(run(['--version'])).toEqual({
+  it('prints the supplied package version', async () => {
+    expect(await run(['--version'])).toEqual({
       stdout: '0.1.0\n',
       stderr: '',
       exitCode: 0,
@@ -62,14 +62,14 @@ describe('CLI', () => {
     ['--team', 'override', '--json', 'task', 'list'],
     ['task', '--team', 'override', 'list', '--json'],
     ['task', 'list', '--team', 'override', '--json'],
-  ])('accepts global flags at every command depth: %j', (...argv) => {
+  ])('accepts global flags at every command depth: %j', async (...argv) => {
     const home = mkdtempSync(join(tmpdir(), 'cli-'));
     const id = randomUUID();
     const db = new Store(home, id);
     db.create('lead', 'override');
     db.add('flag test');
     try {
-      const result = run(
+      const result = await run(
         argv.map((a) => (a === 'override' ? id : a)),
         {
           HERDR_TEAMS_HOME: home,
@@ -86,16 +86,15 @@ describe('CLI', () => {
   });
   it.each([['nonsense'], ['team', 'nonsense'], ['--team']])(
     'reports usage errors for %j',
-    (...argv) => {
-      expect(run(argv)).toMatchObject({ exitCode: 2, stdout: '' });
-      expect(run(argv).stderr).toContain('error:');
+    async (...argv) => {
+      expect(await run(argv)).toMatchObject({ exitCode: 2, stdout: '' });
+      expect((await run(argv)).stderr).toContain('error:');
     },
   );
-  it('shows nested help without running the stub', () => {
-    const result = run(['task', '--help']);
+  it('shows nested help', async () => {
+    const result = await run(['task', '--help']);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('dep');
-    expect(result.stdout).not.toContain('task: not implemented');
   });
 });
 
@@ -184,5 +183,17 @@ describe('identity (PLAN §4.2–4.3)', () => {
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
+  });
+});
+
+describe('removed commands', () => {
+  it.each([
+    ['task', 'add', 'x', '--worktree'],
+    ['worktree', 'request', '--reason', 'x'],
+    ['worktree', 'approve', 'x'],
+    ['worktree', 'create', 'alice'],
+    ['mcp'],
+  ])('rejects %j', async (...argv) => {
+    expect(await run(argv)).toMatchObject({ exitCode: 2 });
   });
 });

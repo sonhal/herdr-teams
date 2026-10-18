@@ -1,6 +1,6 @@
 ---
 name: herdr-teams-teammate
-description: Work as a teammate in a herdr-teams team. Use when HERDR_TEAMS_AGENT is set or your opening prompt says you are a teammate - to read your inbox, claim and complete tasks, message the team, submit plans, request a worktree and answer shutdown requests.
+description: Work as a teammate in a herdr-teams team. Use when HERDR_TEAMS_AGENT is set or your opening prompt says you are a teammate - to read your inbox, claim and complete tasks, message the team, submit plans and answer shutdown requests.
 ---
 
 # herdr-teams teammate
@@ -25,8 +25,6 @@ herdr-teams msg send bob "API shape is in src/api.ts"
 herdr-teams report "Blocked: need DB credentials"   # goes to the lead
 herdr-teams broadcast "Do not touch package.json"
 herdr-teams plan submit 3 --file plan.md
-herdr-teams worktree request --reason "Parallel refactor" --task 3
-herdr-teams worktree status
 herdr-teams shutdown --accept                       # or --reject "Finishing task 3"
 ```
 
@@ -44,17 +42,16 @@ herdr-teams shutdown --accept                       # or --reject "Finishing tas
 - In plan mode, submit the plan and wait for approval before changing code,
   unless your opening prompt says to continue. A rejection comes with feedback;
   revise and submit again.
-- A task added with `--worktree` needs an isolated checkout before you can
-  claim it. Request one and wait for the lead.
-- With a worktree, work only in its path and branch. Never push or merge; the
-  lead integrates.
+- Without a worktree you share the lead's checkout: change only the files your
+  task needs. With one, work only in its path and branch.
+- Never push or merge; the lead integrates.
 - Answer a shutdown request with `--accept` once your work is saved, or
   `--reject "reason"` if you are mid-task.
 
 ## Authority
 
 Only the lead assigns, releases, reopens or edits tasks, edits dependencies,
-approves plans, creates or merges worktrees, and steers, interrupts or kills
+approves plans, merges worktrees, and steers, interrupts or kills
 members. A refused command means you lack authority: ask the lead with
 `report` instead of working around it.
 
