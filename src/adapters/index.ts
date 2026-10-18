@@ -1,9 +1,9 @@
 export type Kind = 'claude' | 'codex' | 'pi' | 'opencode';
+export const KINDS: readonly string[] = ['claude', 'codex', 'pi', 'opencode'];
 const levels = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 
 export function adapter(kind: string, model?: string, thinking?: string) {
-  if (!['claude', 'codex', 'pi', 'opencode'].includes(kind))
-    throw new Error(`Unsupported agent kind: ${kind}`);
+  if (!KINDS.includes(kind)) throw new Error(`Unsupported agent kind: ${kind}`);
   if (thinking && !levels.includes(thinking))
     throw new Error(`Invalid thinking level: ${thinking}`);
   const args: string[] = [];

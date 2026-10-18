@@ -19,11 +19,16 @@ export function installTemplateCommands(
   const print = (v: unknown) => output(JSON.stringify(v, null, 2) + '\n');
   const start = replace('start', 'start <template>')
     .option('--name <name>', 'runtime team name')
-    .option('--lead <name>', 'lead name');
+    .option('--lead <name>', 'lead name')
+    .option(
+      '--kind <kind>',
+      "agent CLI for members whose role names none (default: this pane's agent)",
+    );
   start.action(async (template: string) => {
     const flags = start.optsWithGlobals<{
       name?: string;
       lead?: string;
+      kind?: string;
       team?: string;
     }>();
     const identity = readIdentity(env, flags.team);
@@ -36,9 +41,14 @@ export function installTemplateCommands(
         new Lifecycle(db, new HerdrClient({ env }), env),
         template,
         flags.lead ?? identity.agent ?? 'lead',
+        flags.kind,
       ),
     );
   });
+  const list = replace('templates', 'templates').description(
+    'List team templates: project, global, then built-in',
+  );
+  list.action(() => print(new Config(process.cwd(), env).catalog()));
   const save = replace('save', 'save <template>').option(
     '--scope <scope>',
     'project or global',
