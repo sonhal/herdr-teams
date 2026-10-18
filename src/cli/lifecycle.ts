@@ -6,7 +6,7 @@ import { Command } from 'commander';
 import { Store } from '../core/store.js';
 import { Lifecycle, type SpawnOptions } from '../core/lifecycle.js';
 import { HerdrClient } from '../herdr/index.js';
-import { readIdentity } from './identity.js';
+import { readSelectedIdentity } from './identity.js';
 
 export function installLifecycleCommands(
   program: Command,
@@ -25,7 +25,7 @@ export function installLifecycleCommands(
     return program.command(usage);
   }
   function context(cmd: Command, privileged = true) {
-    const identity = readIdentity(
+    const identity = readSelectedIdentity(
       env,
       cmd.optsWithGlobals<{ team?: string }>().team,
     );

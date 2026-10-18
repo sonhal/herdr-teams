@@ -14,19 +14,21 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runCliAsync } from '../src/cli/index.js';
 import { Lifecycle } from '../src/core/lifecycle.js';
-import { Store } from '../src/core/store.js';
+import { Store, newAgentName } from '../src/core/store.js';
 import { HerdrClient } from '../src/herdr/index.js';
 import { syncMembers } from '../src/supervisor/lifecycle.js';
 import { agent, pane } from './helpers/fixtures.js';
 import { fakeHerdr, jsonReply } from './helpers/fake-herdr.js';
 const homes: string[] = [];
+const instanceId = randomUUID();
+const instanceName = newAgentName('demo', 'alice', instanceId);
 afterEach(() =>
   homes.splice(0).forEach((p) => rmSync(p, { recursive: true, force: true })),
 );
 function setup() {
   const home = mkdtempSync(join(tmpdir(), 'lifecycle-'));
   homes.push(home);
-  const db = new Store(home, randomUUID());
+  const db = new Store(home, instanceId);
   db.create('lead', 'demo');
   return db;
 }
@@ -43,7 +45,7 @@ it('launches Codex with isolated identity, model, effort and attributed bootstra
     started,
     metadata,
     prompted,
-    jsonReply({ type: 'agent_info', agent: { ...agent, name: 'demo-alice' } }),
+    jsonReply({ type: 'agent_info', agent: { ...agent, name: instanceName } }),
   ]);
   try {
     const lifecycle = new Lifecycle(
@@ -63,7 +65,7 @@ it('launches Codex with isolated identity, model, effort and attributed bootstra
     expect(calls[1]).toEqual([
       'agent',
       'start',
-      'demo-alice',
+      instanceName,
       '--kind',
       'codex',
       '--pane',
@@ -231,7 +233,7 @@ it('uses an overflow tab after four split members without stealing focus', async
     started,
     metadata,
     prompted,
-    jsonReply({ type: 'agent_info', agent: { ...agent, name: 'demo-alice' } }),
+    jsonReply({ type: 'agent_info', agent: { ...agent, name: instanceName } }),
   ]);
   try {
     await new Lifecycle(db, new HerdrClient({ env: fake.env }), fake.env).spawn(
@@ -252,7 +254,7 @@ describe('split placement', () => {
     started,
     metadata,
     prompted,
-    jsonReply({ type: 'agent_info', agent: { ...agent, name: 'demo-alice' } }),
+    jsonReply({ type: 'agent_info', agent: { ...agent, name: instanceName } }),
   ];
   function leadTeam(layout?: { count: number; number: number }) {
     const db = setup();
@@ -428,7 +430,7 @@ describe('install-shim action', () => {
 describe('herdr agent names', () => {
   // herdr v0.9.5 src/app/agents.rs: agent names are unique per herdr session
   // and match ^[a-z][a-z0-9_-]{0,31}$; a duplicate fails with agent_name_taken.
-  const named = { ...agent, name: 'demo-alice' };
+  const named = { ...agent, name: instanceName };
   it('registers a teammate under its team’s name so teams can share member names', async () => {
     const db = setup();
     const fake = await fakeHerdr([
@@ -445,11 +447,11 @@ describe('herdr agent names', () => {
         fake.env,
       ).spawn('alice', { kind: 'codex', prompt: 'test' });
       const calls = await fake.calls();
-      expect(calls[1]!.slice(0, 3)).toEqual(['agent', 'start', 'demo-alice']);
+      expect(calls[1]!.slice(0, 3)).toEqual(['agent', 'start', instanceName]);
       expect(calls[2]).toContain('alice');
-      expect(calls[3]!.slice(0, 3)).toEqual(['agent', 'prompt', 'demo-alice']);
+      expect(calls[3]!.slice(0, 3)).toEqual(['agent', 'prompt', instanceName]);
       expect(db.config().details!.alice).toMatchObject({
-        agent_name: 'demo-alice',
+        agent_name: instanceName,
         state: 'idle',
       });
     } finally {
@@ -460,7 +462,7 @@ describe('herdr agent names', () => {
     const db = setup();
     db.reserveMember('alice', {
       kind: 'codex',
-      agent_name: 'demo-alice',
+      agent_name: instanceName,
       pane_id: agent.pane_id,
       state: 'idle',
     });

@@ -5,7 +5,7 @@ import { Store } from '../core/store.js';
 import { stripVTControlCharacters } from 'node:util';
 import { snapshot, renderBoard } from '../board/model.js';
 import { terminalBoard } from '../board/terminal.js';
-import { readIdentity } from './identity.js';
+import { readSelectedIdentity } from './identity.js';
 import { runCliAsync } from './index.js';
 import { Config } from '../core/config.js';
 import { HerdrClient } from '../herdr/index.js';
@@ -22,7 +22,7 @@ export function installBoardCommands(
     return parent.command(usage);
   }
   function context(command: Command) {
-    const identity = readIdentity(
+    const identity = readSelectedIdentity(
       env,
       command.optsWithGlobals<{ team?: string }>().team,
     );
@@ -118,7 +118,7 @@ export function installBoardCommands(
     .command('reopen <id>')
     .action((id: string, _flags: unknown, command: Command) => {
       const db = context(command);
-      const identity = readIdentity(env);
+      const identity = readSelectedIdentity(env);
       db.authorize(identity.agent, true);
       const task = db.editTask(id, (t) => {
         if (!['completed', 'failed', 'deleted'].includes(t.status))
@@ -135,7 +135,7 @@ export function installBoardCommands(
   const actions = program.commands.find((c) => c.name() === '_action')!;
   const open = replace(actions, 'open-board', 'open-board');
   open.action(async () => {
-    const identity = readIdentity(
+    const identity = readSelectedIdentity(
       env,
       open.optsWithGlobals<{ team?: string }>().team,
     );

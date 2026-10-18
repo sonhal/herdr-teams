@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { HerdrClient } from '../herdr/index.js';
 import { Worktrees, worktreeStatus } from '../core/worktrees.js';
 import { Store } from '../core/store.js';
-import { pluginStateDir, readIdentity } from './identity.js';
+import { pluginStateDir, readIdentity, resolveTeamId } from './identity.js';
 
 export function installCoreCommands(
   program: Command,
@@ -32,7 +32,7 @@ export function installCoreCommands(
     const { identity, home } = context(command);
     if (!identity.teamId)
       throw new Error('Select a team with --team or HERDR_TEAMS_TEAM');
-    const db = new Store(home, identity.teamId);
+    const db = new Store(home, resolveTeamId(home, identity.teamId)!);
     const actor = db.authorize(identity.agent, privileged);
     return { db, actor };
   }

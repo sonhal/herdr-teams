@@ -4,7 +4,7 @@ import { Config } from '../core/config.js';
 import { Lifecycle } from '../core/lifecycle.js';
 import { Store } from '../core/store.js';
 import { HerdrClient } from '../herdr/index.js';
-import { readIdentity } from './identity.js';
+import { readIdentity, readSelectedIdentity } from './identity.js';
 export function installTemplateCommands(
   program: Command,
   env: NodeJS.ProcessEnv,
@@ -42,6 +42,7 @@ export function installTemplateCommands(
       template,
       flags.lead ?? identity.agent ?? 'lead',
       flags.kind,
+      flags.name ?? flags.team ?? template,
     );
     (start as Command & { _storeId?: string })._storeId = db.id;
     print(team);
@@ -56,7 +57,7 @@ export function installTemplateCommands(
     'project',
   );
   save.action((template: string) => {
-    const identity = readIdentity(
+    const identity = readSelectedIdentity(
       env,
       save.optsWithGlobals<{ team?: string }>().team,
     );

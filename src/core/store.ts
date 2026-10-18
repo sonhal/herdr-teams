@@ -10,7 +10,7 @@ import {
   statSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import type { AgentInfo } from '../herdr/index.js';
 
 export interface Team {
@@ -78,13 +78,22 @@ export function agentName(team: Team, member: string): string {
 }
 
 /** herdr 0.9.5 caps agent names at 32 characters. */
-export function newAgentName(team: string, member: string): string {
+export function newAgentName(
+  team: string,
+  member: string,
+  instanceId: string,
+): string {
   const name = `${team}-${member}`;
   if (name.length > 32)
     throw new Error(
       `herdr agent name ${name} exceeds 32 characters; use a shorter team or member name`,
     );
-  return name;
+  // Names are session-wide in herdr, while display names can repeat.
+  const suffix = createHash('sha256')
+    .update(JSON.stringify([instanceId, member]))
+    .digest('hex')
+    .slice(0, 4);
+  return `${name.slice(0, 27)}-${suffix}`;
 }
 
 export interface Member {

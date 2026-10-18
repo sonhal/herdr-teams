@@ -6,7 +6,7 @@ import { afterEach, expect, it } from 'vitest';
 import { runCliAsync } from '../src/cli/index.js';
 import { Config } from '../src/core/config.js';
 import { Lifecycle } from '../src/core/lifecycle.js';
-import { Store } from '../src/core/store.js';
+import { Store, newAgentName } from '../src/core/store.js';
 import { HerdrClient } from '../src/herdr/index.js';
 import { agent, pane } from './helpers/fixtures.js';
 import { fakeHerdr, jsonReply } from './helpers/fake-herdr.js';
@@ -81,7 +81,10 @@ it("spawns the calling pane's agent kind when nothing names one", async () => {
     jsonReply({ type: 'agent_started', agent, argv: ['claude'] }),
     { stdout: '' },
     jsonReply({ type: 'agent_prompted', agent }),
-    jsonReply({ type: 'agent_info', agent: { ...agent, name: 'demo-alice' } }),
+    jsonReply({
+      type: 'agent_info',
+      agent: { ...agent, name: newAgentName('demo', 'alice', db.id) },
+    }),
   ]);
   try {
     const env = { ...fake.env, HERDR_PANE_ID: 'w1:p1' };

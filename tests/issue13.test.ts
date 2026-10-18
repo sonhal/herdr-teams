@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
 import { afterEach, expect, it } from 'vitest';
-import { Store } from '../src/core/store.js';
+import { Store, newAgentName } from '../src/core/store.js';
 import { Lifecycle } from '../src/core/lifecycle.js';
 import { HerdrClient } from '../src/herdr/index.js';
 import { reconcile } from '../src/supervisor/delivery.js';
@@ -202,7 +202,7 @@ it('splits a surviving pane after killing the latest split member', async () => 
   await lifecycle.kill('bob');
   h.setLive({
     ...agent,
-    name: 'demo-carol',
+    name: newAgentName('demo', 'carol', db.id),
     pane_id: 'w1:p3',
     completion_seq: 0,
   });

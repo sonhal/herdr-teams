@@ -58,3 +58,14 @@ export function resolveTeamId(
     );
   throw new Error(`Unknown team "${query}"`);
 }
+
+/** Resolve only when selecting an existing team; creation reads raw identity. */
+export function readSelectedIdentity(
+  env: NodeJS.ProcessEnv,
+  team?: string,
+): Identity {
+  const identity = readIdentity(env, team);
+  if (identity.home)
+    identity.teamId = resolveTeamId(identity.home, identity.teamId);
+  return identity;
+}

@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it } from 'vitest';
 import { Config } from '../src/core/config.js';
 import { Lifecycle } from '../src/core/lifecycle.js';
-import { Store } from '../src/core/store.js';
+import { Store, newAgentName } from '../src/core/store.js';
 import { HerdrClient } from '../src/herdr/index.js';
 import { agent, pane } from './helpers/fixtures.js';
 import { fakeHerdr, jsonReply } from './helpers/fake-herdr.js';
@@ -79,6 +79,7 @@ it('saves and restarts a team with equivalent roles, defaults and seed tasks', a
   const task = original.add('Seed work', 'Description');
   original.change(task.id, 'assign', 'lead', 'alice');
   config.save(original, 'saved', 'project');
+  const restored = new Store(join(home, 'state'), randomUUID());
   const fake = await fakeHerdr([
     jsonReply({ type: 'tab_created', root_pane: pane }),
     jsonReply({ type: 'agent_started', agent, argv: ['codex'] }),
@@ -86,11 +87,10 @@ it('saves and restarts a team with equivalent roles, defaults and seed tasks', a
     jsonReply({ type: 'agent_prompted', agent }),
     jsonReply({
       type: 'agent_info',
-      agent: { ...agent, name: 'saved-alice' },
+      agent: { ...agent, name: newAgentName('saved', 'alice', restored.id) },
     }),
   ]);
   try {
-    const restored = new Store(join(home, 'state'), randomUUID());
     await config.start(
       restored,
       new Lifecycle(restored, new HerdrClient({ env: fake.env }), env),
