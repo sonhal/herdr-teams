@@ -32,7 +32,6 @@ describe('CLI skeleton', () => {
         'plan',
         'worktree',
         'board',
-        'supervise',
       ])
         expect(result.stdout).toContain(command);
       expect(result.stdout).toContain('--team');
@@ -62,16 +61,7 @@ describe('CLI skeleton', () => {
       'merge',
       'remove',
     ].map((name) => ['worktree', name]),
-    ...[
-      'status',
-      'cleanup',
-      'log',
-      'peek',
-      'steer',
-      'interrupt',
-      'board',
-      'supervise',
-    ].map((name) => [name]),
+    ...['status', 'cleanup', 'log', 'board'].map((name) => [name]),
     ['_action', 'start-team'],
     ['_action', 'open-board'],
   ])('exposes a side-effect-free placeholder for %j', (...argv) => {

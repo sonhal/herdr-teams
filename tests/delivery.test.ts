@@ -20,6 +20,9 @@ function setup() {
   homes.push(home);
   const db = new Store(home, 'demo');
   db.create('lead');
+  db.updateTeam((team) => {
+    team.supervisor = { mode: 'off' };
+  });
   db.addMember('alice');
   return db;
 }

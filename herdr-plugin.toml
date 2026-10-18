@@ -25,6 +25,13 @@ command = ["node", "dist/bin/herdr-teams.js", "_hook", "event"]
 on = "pane.moved"
 command = ["node", "dist/bin/herdr-teams.js", "_hook", "event"]
 
+[[events]]
+on = "pane.focused"
+command = ["node", "dist/bin/herdr-teams.js", "_hook", "event"]
+[[events]]
+on = "pane.agent_detected"
+command = ["node", "dist/bin/herdr-teams.js", "_hook", "event"]
+
 [[actions]]
 id = "start-team"
 title = "Start team from template"

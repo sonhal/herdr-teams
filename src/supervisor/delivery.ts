@@ -113,16 +113,23 @@ export async function reconcile(db: Store, client: HerdrClient): Promise<void> {
       db.saveDeliveryState(state);
     }
     for (const [member, agent] of members) {
-      if (!['idle', 'done'].includes(agent.agent_status)) continue;
+      if (!['idle', 'done', 'working'].includes(agent.agent_status)) continue;
       const inbox = db.inbox(member);
       const cursor = state.cursors[member];
       const index =
         cursor === undefined ? -1 : inbox.findIndex((m) => m.id === cursor);
       if (cursor !== undefined && index === -1)
         throw new Error(`Unknown inbox cursor for ${member}`);
-      let pending = inbox.slice(index + 1);
+      state.acknowledged ??= {};
+      const acknowledged = new Set(state.acknowledged[member] ?? []);
+      let pending = inbox
+        .slice(index + 1)
+        .filter((m) => !acknowledged.has(m.id));
+      if (agent.agent_status === 'working')
+        pending = pending.filter((m) => m.urgent);
       if (
         !pending.length &&
+        agent.agent_status !== 'working' &&
         member !== team.lead &&
         team.auto_claim !== false
       ) {
@@ -139,12 +146,30 @@ export async function reconcile(db: Store, client: HerdrClient): Promise<void> {
       if (!pending.length) continue;
       // Recheck after reports and disk operations; herdr also rejects blocked agents.
       const current = (await client.agentGet(agent.pane_id)).agent;
-      if (!['idle', 'done'].includes(current.agent_status)) continue;
+      if (
+        current.agent_status === 'blocked' ||
+        current.agent_status === 'unknown'
+      )
+        continue;
+      if (current.agent_status === 'working') {
+        pending = pending.filter((m) => m.urgent);
+        if (!pending.length) continue;
+        if (team.details?.[member]?.kind !== 'codex') {
+          await client.sendKeys(agent.pane_id, 'esc');
+          continue;
+        }
+      }
       await client.agentPrompt(
         agent.pane_id,
         pending.map((m) => wrap(team.name, m)).join('\n\n'),
       );
-      state.cursors[member] = pending.at(-1)!.id;
+      for (const message of pending) acknowledged.add(message.id);
+      for (const message of db.inbox(member).slice(index + 1)) {
+        if (!acknowledged.has(message.id)) break;
+        state.cursors[member] = message.id;
+        acknowledged.delete(message.id);
+      }
+      state.acknowledged[member] = [...acknowledged];
       db.saveDeliveryState(state);
     }
   } finally {

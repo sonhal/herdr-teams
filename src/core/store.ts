@@ -22,7 +22,15 @@ export interface Team {
   details?: Record<string, Member>;
   defaults?: { kind?: string; model?: string; thinking?: string };
   layout?: { tab_id: string; pane_id: string; count: number; number: number };
-  supervisor?: { mode: 'pane' | 'tab' | 'off'; pane_id?: string };
+  supervisor?: {
+    mode: 'pane' | 'tab' | 'off';
+    pane_id?: string;
+    tick_seconds?: number;
+    no_progress_minutes?: number;
+    needs_input_minutes?: number;
+    unknown_minutes?: number;
+    on_no_progress?: 'notify' | 'nudge';
+  };
   createdAt: string;
 }
 export type EndState =
@@ -36,11 +44,23 @@ export interface Member {
   tab_id?: string;
   plan_mode?: boolean;
   state: string;
+  state_since?: number;
+  progress_at?: number;
+  last_activity?: number;
+  focused_at?: number;
+  interactive?: boolean;
+  interrupted?: boolean;
+  screen_hash?: string;
+  advisory?: 'no-progress' | 'needs-input' | 'unclassified' | null;
+  advisory_notified?: boolean;
+  nudged?: boolean;
   ended?: EndState;
   shutdown_requested?: boolean;
   shutdown_accepted?: boolean;
   shutdown_exit_sent?: boolean;
   launch_args?: string[];
+  launch_pid?: number;
+  started_at?: number;
   last_output?: string;
   session?: unknown;
 }
@@ -484,6 +504,7 @@ export class Store {
 
 export interface DeliveryState {
   blocked?: Record<string, boolean>;
+  acknowledged?: Record<string, string[]>;
   cursors: Record<string, string>;
   reports: Record<string, number>;
 }

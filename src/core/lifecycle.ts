@@ -48,6 +48,8 @@ export class Lifecycle {
       ...(model ? { model } : {}),
       ...(thinking ? { thinking } : {}),
       state: 'starting',
+      launch_pid: process.pid,
+      started_at: Date.now(),
       plan_mode: options.planMode ?? false,
       launch_args: resolved.args,
     });
