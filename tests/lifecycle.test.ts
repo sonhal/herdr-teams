@@ -220,7 +220,7 @@ describe('split placement', () => {
         db,
         new HerdrClient({ env: fake.env }),
         fake.env,
-      ).spawn('alice', { prompt: 'test' });
+      ).spawn('alice', { kind: 'codex', prompt: 'test' });
       return (await fake.calls())[0]!;
     } finally {
       await fake.cleanup();
@@ -283,7 +283,7 @@ describe('split placement', () => {
         db,
         new HerdrClient({ env: fake.env }),
         fake.env,
-      ).spawn('alice', { prompt: 'test' });
+      ).spawn('alice', { kind: 'codex', prompt: 'test' });
       expect((await fake.calls())[1]).toContain('team:demo');
       expect(db.config().layout).toMatchObject({ count: 1, number: 1 });
     } finally {
